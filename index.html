@@ -333,7 +333,8 @@ const OPERATION_TABS = [
 ];
 function today() { return new Date().toISOString().slice(0, 10); }
 
-function OperationFormModal({ open, onClose, properties, onSubmitGroup }) {
+function OperationFormModal({ open, onClose, properties, onSubmitGroup, editingGroup }) {
+  const isEditing = Boolean(editingGroup);
   const [tab, setTab] = useState("LOYER");
   const [date, setDate] = useState(today());
   const [propertyId, setPropertyId] = useState(properties[0]?.id || "");
@@ -346,7 +347,27 @@ function OperationFormModal({ open, onClose, properties, onSubmitGroup }) {
   const [chargeMontant, setChargeMontant] = useState("");
   const [chargeLibelle, setChargeLibelle] = useState("");
 
-  useEffect(() => { if (open) { setDate(today()); if (!propertyId && properties[0]) setPropertyId(properties[0].id); } }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    if (editingGroup) {
+      setTab(editingGroup.tab);
+      setDate(editingGroup.date);
+      setPropertyId(editingGroup.propertyId);
+      setLoyerHC(editingGroup.loyerHC ?? "");
+      setProvisions(editingGroup.provisions ?? "");
+      setCapital(editingGroup.capital ?? "");
+      setInterets(editingGroup.interets ?? "");
+      setAssurance(editingGroup.assurance ?? "");
+      setChargeCategorie(editingGroup.chargeCategorie ?? CHARGE_CATEGORIES[0]);
+      setChargeMontant(editingGroup.chargeMontant ?? "");
+      setChargeLibelle(editingGroup.chargeLibelle ?? "");
+    } else {
+      setTab("LOYER");
+      setDate(today());
+      if (!propertyId && properties[0]) setPropertyId(properties[0].id);
+      resetAll();
+    }
+  }, [open, editingGroup]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const num = (v) => Math.max(0, parseFloat(String(v).replace(",", ".")) || 0);
   const loyerTotal = num(loyerHC) + num(provisions);
@@ -374,13 +395,13 @@ function OperationFormModal({ open, onClose, properties, onSubmitGroup }) {
       if (num(chargeMontant) > 0) rows.push({ ...base, categorie: chargeCategorie, libelle: chargeLibelle.trim(), montant: num(chargeMontant), typeOperation: "Depense" });
     }
     if (rows.length === 0) return;
-    await onSubmitGroup(rows);
+    await onSubmitGroup(rows, isEditing ? editingGroup.groupId : null);
     resetAll();
     onClose();
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Nouvelle opération" wide>
+    <Modal open={open} onClose={onClose} title={isEditing ? "Modifier l'opération" : "Nouvelle opération"} wide>
       <div className="mb-5 flex gap-2 rounded-lg bg-[#EAE7D9] p-1">
         {OPERATION_TABS.map((t) => {
           const Icon = t.icon; const active = tab === t.id;
@@ -449,7 +470,7 @@ function OperationFormModal({ open, onClose, properties, onSubmitGroup }) {
 
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Annuler</button>
-          <button type="submit" disabled={!propertyId} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">Enregistrer</button>
+          <button type="submit" disabled={!propertyId} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">{isEditing ? "Enregistrer les modifications" : "Enregistrer"}</button>
         </div>
       </form>
     </Modal>
@@ -466,6 +487,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
   const [yearFilter, setYearFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [formOpen, setFormOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState(null);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
 
   const propertiesById = useMemo(() => Object.fromEntries(properties.map((p) => [p.id, p])), [properties]);
@@ -489,7 +511,29 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
     return { totalLoyers, totalCharges, net };
   }, [filtered]);
 
-  async function handleSubmitGroup(rows) { await store.addTransactions(rows); }
+  async function handleSubmitGroup(rows, oldGroupId) {
+    if (oldGroupId) await store.deleteTransactionGroup(oldGroupId);
+    await store.addTransactions(rows);
+  }
+  function openNewForm() { setEditingGroup(null); setFormOpen(true); }
+  function handleEditRow(t) {
+    const group = t.groupId ? transactions.filter((x) => x.groupId === t.groupId) : [t];
+    const cats = new Set(group.map((x) => x.categorie));
+    const amountFor = (cat) => group.find((x) => x.categorie === cat)?.montant ?? "";
+    let tab = "CHARGE";
+    if (cats.has(CAT.LOYER_HC) || cats.has(CAT.PROVISIONS)) tab = "LOYER";
+    else if (cats.has(CAT.INTERETS) || cats.has(CAT.ASSURANCE_EMPRUNT) || cats.has(CAT.CAPITAL)) tab = "EMPRUNT";
+
+    const base = { groupId: t.groupId || t.id, tab, date: t.date, propertyId: t.propertyId };
+    if (tab === "LOYER") {
+      setEditingGroup({ ...base, loyerHC: amountFor(CAT.LOYER_HC), provisions: amountFor(CAT.PROVISIONS) });
+    } else if (tab === "EMPRUNT") {
+      setEditingGroup({ ...base, capital: amountFor(CAT.CAPITAL), interets: amountFor(CAT.INTERETS), assurance: amountFor(CAT.ASSURANCE_EMPRUNT) });
+    } else {
+      setEditingGroup({ ...base, chargeCategorie: t.categorie, chargeMontant: t.montant, chargeLibelle: t.libelle || "" });
+    }
+    setFormOpen(true);
+  }
   async function handleDeleteRow(t) {
     if (t.groupId) {
       const sameGroup = transactions.filter((x) => x.groupId === t.groupId);
@@ -540,7 +584,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         </div>
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <button onClick={() => setFormOpen(true)} disabled={properties.length === 0} className="flex items-center gap-1.5 rounded-lg bg-[#9A5B34] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40"><Plus size={16} />Nouvelle opération</button>
+          <button onClick={openNewForm} disabled={properties.length === 0} className="flex items-center gap-1.5 rounded-lg bg-[#9A5B34] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40"><Plus size={16} />Nouvelle opération</button>
           <div className="flex flex-wrap gap-2">
             <select className="rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849]" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
               <option value="ALL">Toutes les années</option>
@@ -557,7 +601,37 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
           <div className="mb-4 rounded-lg border border-[#DEDAC9] bg-white px-4 py-3 text-sm text-[#6B6858]">Ajoute un premier bien dans « Mes biens » pour commencer à saisir des opérations.</div>
         )}
 
-        <div className="overflow-hidden rounded-xl border border-[#DEDAC9] bg-white">
+        {/* Vue mobile : cartes empilées */}
+        <div className="space-y-2 sm:hidden">
+          {filtered.length === 0 && (
+            <div className="rounded-xl border border-[#DEDAC9] bg-white px-4 py-10 text-center text-[#8A876F]">Aucune opération pour ces filtres.</div>
+          )}
+          {filtered.map((t) => {
+            const property = propertiesById[t.propertyId]; const isRecette = t.typeOperation === "Recette";
+            return (
+              <div key={t.id} className="rounded-xl border border-[#DEDAC9] bg-white px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-sm text-[#20211D]">{property?.name || "—"}</div>
+                    <div className="text-xs text-[#8A876F]">{formatDateForDisplay(t.date)}</div>
+                  </div>
+                  <div className={`whitespace-nowrap font-mono text-base tabular-nums ${isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>
+                    {isRecette ? "+" : "−"} {formatCurrency(t.montant)}
+                  </div>
+                </div>
+                <div className="mt-1 text-sm text-[#5B5849]">{t.categorie}</div>
+                {t.libelle && <div className="text-xs text-[#8A876F]">{t.libelle}</div>}
+                <div className="mt-2 flex justify-end gap-1">
+                  <button onClick={() => handleEditRow(t)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
+                  <button onClick={() => handleDeleteRow(t)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Vue bureau : tableau */}
+        <div className="hidden overflow-x-auto rounded-xl border border-[#DEDAC9] bg-white sm:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#DEDAC9] bg-[#F7F5EC] text-left text-[#6B6858]">
@@ -580,7 +654,12 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
                     <td className="px-4 py-3 text-[#5B5849]">{t.categorie}</td>
                     <td className="px-4 py-3 text-[#5B5849]">{t.libelle || "—"}</td>
                     <td className={`whitespace-nowrap px-4 py-3 text-right font-mono tabular-nums ${isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>{isRecette ? "+" : "−"} {formatCurrency(t.montant)}</td>
-                    <td className="px-4 py-3 text-right"><button onClick={() => handleDeleteRow(t)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button></td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button onClick={() => handleEditRow(t)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
+                        <button onClick={() => handleDeleteRow(t)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -592,7 +671,13 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
       </div>
 
       <PropertyManagerModal open={propertiesOpen} onClose={() => setPropertiesOpen(false)} properties={properties} onAdd={store.addProperty} onUpdate={store.updateProperty} onDelete={store.deleteProperty} />
-      <OperationFormModal open={formOpen} onClose={() => setFormOpen(false)} properties={properties} onSubmitGroup={handleSubmitGroup} />
+      <OperationFormModal
+        open={formOpen}
+        onClose={() => { setFormOpen(false); setEditingGroup(null); }}
+        properties={properties}
+        onSubmitGroup={handleSubmitGroup}
+        editingGroup={editingGroup}
+      />
     </div>
   );
 }
