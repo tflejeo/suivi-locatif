@@ -95,6 +95,7 @@ const ArrowDownRight = (p) => <IconBase {...p}><path d="m7 7 10 10"/><path d="M1
 const LogOut = (p) => <IconBase {...p}><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></IconBase>;
 const Copy = (p) => <IconBase {...p}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></IconBase>;
 const Lock = (p) => <IconBase {...p}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></IconBase>;
+const Users = (p) => <IconBase {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></IconBase>;
 
 /* ============================================================================
  * RÉFÉRENTIEL FISCAL
@@ -132,6 +133,11 @@ function detectGroupTab(rows) {
   if (cats.has(CAT.LOYER_HC) || cats.has(CAT.PROVISIONS)) return "LOYER";
   if (cats.has(CAT.INTERETS) || cats.has(CAT.ASSURANCE_EMPRUNT) || cats.has(CAT.CAPITAL)) return "EMPRUNT";
   return "CHARGE";
+}
+function findActiveTenant(tenants, propertyId, date) {
+  const candidates = tenants.filter((t) => t.propertyId === propertyId && t.leaseStart <= date && (!t.leaseEnd || t.leaseEnd >= date));
+  if (candidates.length === 0) return null;
+  return candidates.sort((a, b) => (a.leaseStart < b.leaseStart ? 1 : -1))[0];
 }
 
 /* ============================================================================
@@ -190,24 +196,28 @@ function useLedgerStore() {
     catch { return fallback; }
   };
   const [properties, setProperties] = useState(() => readLocal("rel_properties", []));
+  const [tenants, setTenants] = useState(() => readLocal("rel_tenants", []));
   const [transactions, setTransactions] = useState(() => readLocal("rel_transactions", []));
   const [ready, setReady] = useState(!FIREBASE_ENABLED);
 
   useEffect(() => {
     if (!FIREBASE_ENABLED) return;
-    let unsubProps = () => {}; let unsubTx = () => {};
+    let unsubProps = () => {}; let unsubTenants = () => {}; let unsubTx = () => {};
     (async () => {
       const api = await getFirestoreApi();
       const propsQuery = api.query(api.collection(api.db, "properties"));
       unsubProps = api.onSnapshot(propsQuery, (snap) => setProperties(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+      const tenantsQuery = api.query(api.collection(api.db, "tenants"));
+      unsubTenants = api.onSnapshot(tenantsQuery, (snap) => setTenants(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
       const txQuery = api.query(api.collection(api.db, "transactions"), api.orderBy("date", "desc"));
       unsubTx = api.onSnapshot(txQuery, (snap) => setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
       setReady(true);
     })();
-    return () => { unsubProps(); unsubTx(); };
+    return () => { unsubProps(); unsubTenants(); unsubTx(); };
   }, []);
 
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_properties", JSON.stringify(properties)); }, [properties]);
+  useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_tenants", JSON.stringify(tenants)); }, [tenants]);
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_transactions", JSON.stringify(transactions)); }, [transactions]);
 
   const addProperty = useCallback(async (property) => {
@@ -222,6 +232,18 @@ function useLedgerStore() {
     if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.deleteDoc(api.doc(api.db, "properties", id)); }
     else setProperties((prev) => prev.filter((p) => p.id !== id));
   }, []);
+  const addTenant = useCallback(async (tenant) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.addDoc(api.collection(api.db, "tenants"), tenant); }
+    else setTenants((prev) => [...prev, { id: uid(), ...tenant }]);
+  }, []);
+  const updateTenant = useCallback(async (id, patch) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.updateDoc(api.doc(api.db, "tenants", id), patch); }
+    else setTenants((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }, []);
+  const deleteTenant = useCallback(async (id) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.deleteDoc(api.doc(api.db, "tenants", id)); }
+    else setTenants((prev) => prev.filter((t) => t.id !== id));
+  }, []);
   const addTransactions = useCallback(async (list) => {
     if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await Promise.all(list.map((t) => api.addDoc(api.collection(api.db, "transactions"), t))); }
     else setTransactions((prev) => [...list.map((t) => ({ id: uid(), ...t })), ...prev]);
@@ -235,7 +257,7 @@ function useLedgerStore() {
     await Promise.all(toRemove.map((t) => deleteTransaction(t.id)));
   }, [transactions, deleteTransaction]);
 
-  return { ready, properties, transactions, addProperty, updateProperty, deleteProperty, addTransactions, deleteTransaction, deleteTransactionGroup };
+  return { ready, properties, tenants, transactions, addProperty, updateProperty, deleteProperty, addTenant, updateTenant, deleteTenant, addTransactions, deleteTransaction, deleteTransactionGroup };
 }
 
 /* ============================================================================
@@ -334,6 +356,105 @@ function PropertyManagerModal({ open, onClose, properties, onAdd, onUpdate, onDe
 }
 
 /* ============================================================================
+ * GESTION DES LOCATAIRES
+ * ==========================================================================*/
+function TenantManagerModal({ open, onClose, tenants, properties, transactions, onAdd, onUpdate, onDelete }) {
+  const [name, setName] = useState("");
+  const [propertyId, setPropertyId] = useState(properties[0]?.id || "");
+  const [leaseStart, setLeaseStart] = useState("");
+  const [leaseEnd, setLeaseEnd] = useState("");
+  const [ongoing, setOngoing] = useState(true);
+  const [editingId, setEditingId] = useState(null);
+
+  function resetForm() {
+    setName(""); setPropertyId(properties[0]?.id || ""); setLeaseStart(""); setLeaseEnd(""); setOngoing(true); setEditingId(null);
+  }
+  function startEdit(t) {
+    setEditingId(t.id); setName(t.name); setPropertyId(t.propertyId);
+    setLeaseStart(t.leaseStart || ""); setLeaseEnd(t.leaseEnd || ""); setOngoing(!t.leaseEnd);
+  }
+  async function submit(e) {
+    e.preventDefault();
+    if (!name.trim() || !propertyId || !leaseStart) return;
+    const payload = { name: name.trim(), propertyId, leaseStart, leaseEnd: ongoing ? null : (leaseEnd || null) };
+    if (editingId) await onUpdate(editingId, payload);
+    else await onAdd(payload);
+    resetForm();
+  }
+  function provisionsByYear(tenantId) {
+    const map = {};
+    for (const t of transactions) {
+      if (t.categorie === CAT.PROVISIONS && t.tenantId === tenantId) {
+        const y = t.date.slice(0, 4);
+        map[y] = (map[y] || 0) + t.montant;
+      }
+    }
+    return Object.entries(map).sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Locataires" wide>
+      <form onSubmit={submit} className="mb-6 space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Nom du locataire">
+            <input className={inputClasses} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. M. Durand" />
+          </Field>
+          <Field label="Logement">
+            <select className={inputClasses} value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+              {properties.length === 0 && <option value="">Ajoute un bien d'abord</option>}
+              {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Début du bail">
+            <input type="date" className={inputClasses} value={leaseStart} onChange={(e) => setLeaseStart(e.target.value)} required />
+          </Field>
+          <Field label="Fin du bail">
+            <input type="date" className={inputClasses} value={leaseEnd} disabled={ongoing} onChange={(e) => setLeaseEnd(e.target.value)} />
+          </Field>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-[#5B5849]">
+          <input type="checkbox" checked={ongoing} onChange={(e) => setOngoing(e.target.checked)} />
+          Bail en cours (pas de date de fin)
+        </label>
+        <div className="flex gap-2">
+          <button type="submit" className="rounded-lg bg-[#20211D] px-4 py-2 text-sm font-medium text-[#F7F5EC] hover:bg-[#3A3B33]">{editingId ? "Enregistrer" : "Ajouter"}</button>
+          {editingId && <button type="button" onClick={resetForm} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Annuler</button>}
+        </div>
+      </form>
+
+      <div className="space-y-2">
+        {tenants.length === 0 && <p className="text-sm text-[#8A876F]">Aucun locataire enregistré pour l'instant.</p>}
+        {tenants.map((t) => {
+          const property = properties.find((p) => p.id === t.propertyId);
+          const yearly = provisionsByYear(t.id);
+          return (
+            <div key={t.id} className="rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-[#20211D]">{t.name}</div>
+                  <div className="text-xs text-[#8A876F]">{property?.name || "—"} · bail du {formatDateForDisplay(t.leaseStart)}{t.leaseEnd ? ` au ${formatDateForDisplay(t.leaseEnd)}` : " (en cours)"}</div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => startEdit(t)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
+                  <button onClick={() => onDelete(t.id)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                </div>
+              </div>
+              {yearly.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-[#EFEDE0] pt-2 text-xs text-[#6B6858]">
+                  {yearly.map(([year, total]) => <span key={year}>Provisions {year} : <span className="font-mono tabular-nums">{formatCurrency(total)}</span></span>)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================================
  * FORMULAIRE DE SAISIE
  * ==========================================================================*/
 const OPERATION_TABS = [
@@ -343,12 +464,14 @@ const OPERATION_TABS = [
 ];
 function today() { return new Date().toISOString().slice(0, 10); }
 
-function OperationFormModal({ open, onClose, properties, onSubmitGroup, editingGroup }) {
+function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup, editingGroup }) {
   const isEditing = editingGroup?.mode === "edit";
   const isDuplicating = editingGroup?.mode === "duplicate";
   const [tab, setTab] = useState("LOYER");
   const [date, setDate] = useState(today());
   const [propertyId, setPropertyId] = useState(properties[0]?.id || "");
+  const [tenantId, setTenantId] = useState("");
+  const [tenantTouched, setTenantTouched] = useState(false);
   const [loyerHC, setLoyerHC] = useState("");
   const [provisions, setProvisions] = useState("");
   const [capital, setCapital] = useState("");
@@ -358,12 +481,16 @@ function OperationFormModal({ open, onClose, properties, onSubmitGroup, editingG
   const [chargeMontant, setChargeMontant] = useState("");
   const [chargeLibelle, setChargeLibelle] = useState("");
 
+  const tenantsForProperty = useMemo(() => tenants.filter((t) => t.propertyId === propertyId), [tenants, propertyId]);
+
   useEffect(() => {
     if (!open) return;
     if (editingGroup) {
       setTab(editingGroup.tab);
       setDate(editingGroup.date);
       setPropertyId(editingGroup.propertyId);
+      setTenantId(editingGroup.tenantId || "");
+      setTenantTouched(true);
       setLoyerHC(editingGroup.loyerHC ?? "");
       setProvisions(editingGroup.provisions ?? "");
       setCapital(editingGroup.capital ?? "");
@@ -376,9 +503,18 @@ function OperationFormModal({ open, onClose, properties, onSubmitGroup, editingG
       setTab("LOYER");
       setDate(today());
       if (!propertyId && properties[0]) setPropertyId(properties[0].id);
+      setTenantTouched(false);
       resetAll();
     }
   }, [open, editingGroup]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Initialise automatiquement le locataire dont le bail est en cours pour ce bien à cette date,
+  // tant que l'utilisateur n'a pas choisi un autre locataire lui-même.
+  useEffect(() => {
+    if (!open || tab !== "LOYER" || tenantTouched) return;
+    const active = findActiveTenant(tenants, propertyId, date);
+    setTenantId(active ? active.id : "");
+  }, [open, tab, propertyId, date, tenants, tenantTouched]);
 
   const num = (v) => Math.max(0, parseFloat(String(v).replace(",", ".")) || 0);
   const loyerTotal = num(loyerHC) + num(provisions);
@@ -394,8 +530,8 @@ function OperationFormModal({ open, onClose, properties, onSubmitGroup, editingG
     const base = { date, propertyId, groupId };
     let rows = [];
     if (tab === "LOYER") {
-      if (num(loyerHC) > 0) rows.push({ ...base, categorie: CAT.LOYER_HC, libelle: `Loyer ${property?.name || ""}`.trim(), montant: num(loyerHC), typeOperation: "Recette" });
-      if (num(provisions) > 0) rows.push({ ...base, categorie: CAT.PROVISIONS, libelle: `Provisions charges ${property?.name || ""}`.trim(), montant: num(provisions), typeOperation: "Recette" });
+      if (num(loyerHC) > 0) rows.push({ ...base, categorie: CAT.LOYER_HC, libelle: `Loyer ${property?.name || ""}`.trim(), montant: num(loyerHC), typeOperation: "Recette", tenantId: tenantId || null });
+      if (num(provisions) > 0) rows.push({ ...base, categorie: CAT.PROVISIONS, libelle: `Provisions charges ${property?.name || ""}`.trim(), montant: num(provisions), typeOperation: "Recette", tenantId: tenantId || null });
     }
     if (tab === "EMPRUNT") {
       if (num(interets) > 0) rows.push({ ...base, categorie: CAT.INTERETS, libelle: `Intérêts emprunt ${property?.name || ""}`.trim(), montant: num(interets), typeOperation: "Depense" });
@@ -439,6 +575,12 @@ function OperationFormModal({ open, onClose, properties, onSubmitGroup, editingG
 
         {tab === "LOYER" && (
           <>
+            <Field label="Locataire">
+              <select className={inputClasses} value={tenantId} onChange={(e) => { setTenantId(e.target.value); setTenantTouched(true); }}>
+                <option value="">Aucun / non renseigné</option>
+                {tenantsForProperty.map((t) => <option key={t.id} value={t.id}>{t.name}{!t.leaseEnd ? " (bail en cours)" : ""}</option>)}
+              </select>
+            </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Loyer Hors Charges (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={loyerHC} onChange={(e) => setLoyerHC(e.target.value)} placeholder="550" /></Field>
               <Field label="Provisions sur charges (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={provisions} onChange={(e) => setProvisions(e.target.value)} placeholder="50" /></Field>
@@ -493,7 +635,7 @@ function OperationFormModal({ open, onClose, properties, onSubmitGroup, editingG
  * ==========================================================================*/
 function RealEstateLedger({ onSignOut, showSignOut }) {
   const store = useLedgerStore();
-  const { properties, transactions } = store;
+  const { properties, tenants, transactions } = store;
   const [selectedPropertyId, setSelectedPropertyId] = useState("ALL");
   const [yearFilter, setYearFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
@@ -501,8 +643,10 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [tenantsOpen, setTenantsOpen] = useState(false);
 
   const propertiesById = useMemo(() => Object.fromEntries(properties.map((p) => [p.id, p])), [properties]);
+  const tenantsById = useMemo(() => Object.fromEntries(tenants.map((t) => [t.id, t])), [tenants]);
   const years = useMemo(() => Array.from(new Set(transactions.map((t) => t.date.slice(0, 4)))).sort().reverse(), [transactions]);
   const allCategories = useMemo(() => Object.values(CAT), []);
 
@@ -514,10 +658,14 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
 
   const displayRows = useMemo(() => {
     if (viewMode === "DETAIL") {
-      return filtered.map((t) => ({
-        key: t.id, date: t.date, propertyId: t.propertyId, montant: t.montant,
-        isRecette: t.typeOperation === "Recette", title: t.categorie, subtitle: t.libelle || "", representative: t,
-      }));
+      return filtered.map((t) => {
+        const tenantName = t.tenantId ? tenantsById[t.tenantId]?.name : null;
+        const subtitle = [t.libelle, tenantName].filter(Boolean).join(" • ");
+        return {
+          key: t.id, date: t.date, propertyId: t.propertyId, montant: t.montant,
+          isRecette: t.typeOperation === "Recette", title: t.categorie, subtitle, representative: t,
+        };
+      });
     }
     const groups = {};
     for (const t of filtered) {
@@ -532,9 +680,10 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
       const title = tab === "LOYER" ? `Loyer ${monthLabel(first.date)}`
         : tab === "EMPRUNT" ? `Mensualité ${monthLabel(first.date)}`
         : first.categorie;
-      return { key: first.groupId || first.id, date: first.date, propertyId: first.propertyId, montant, isRecette, title, subtitle: tab === "CHARGE" ? (first.libelle || "") : "", representative: first };
+      const subtitle = tab === "CHARGE" ? (first.libelle || "") : tab === "LOYER" ? (tenantsById[first.tenantId]?.name || "") : "";
+      return { key: first.groupId || first.id, date: first.date, propertyId: first.propertyId, montant, isRecette, title, subtitle, representative: first };
     }).sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [filtered, viewMode]);
+  }, [filtered, viewMode, tenantsById]);
 
   const kpis = useMemo(() => {
     let totalLoyers = 0, totalCharges = 0, net = 0;
@@ -557,7 +706,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
     const group = t.groupId ? transactions.filter((x) => x.groupId === t.groupId) : [t];
     const amountFor = (cat) => group.find((x) => x.categorie === cat)?.montant ?? "";
     const tab = detectGroupTab(group);
-    if (tab === "LOYER") return { tab, loyerHC: amountFor(CAT.LOYER_HC), provisions: amountFor(CAT.PROVISIONS) };
+    if (tab === "LOYER") return { tab, loyerHC: amountFor(CAT.LOYER_HC), provisions: amountFor(CAT.PROVISIONS), tenantId: group[0]?.tenantId || "" };
     if (tab === "EMPRUNT") return { tab, capital: amountFor(CAT.CAPITAL), interets: amountFor(CAT.INTERETS), assurance: amountFor(CAT.ASSURANCE_EMPRUNT) };
     return { tab, chargeCategorie: t.categorie, chargeMontant: t.montant, chargeLibelle: t.libelle || "" };
   }
@@ -595,6 +744,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setPropertiesOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]"><Settings size={15} />Mes biens</button>
+            <button onClick={() => setTenantsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]"><Users size={15} />Locataires</button>
             <button onClick={handleExport} className="flex items-center gap-1.5 rounded-lg border border-[#20211D] bg-[#20211D] px-3 py-2 text-sm font-medium text-[#F7F5EC] hover:bg-[#3A3B33]"><Download size={15} />Exporter en CSV</button>
             {showSignOut && <button onClick={onSignOut} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Se déconnecter"><LogOut size={15} /></button>}
           </div>
@@ -712,10 +862,21 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
       </div>
 
       <PropertyManagerModal open={propertiesOpen} onClose={() => setPropertiesOpen(false)} properties={properties} onAdd={store.addProperty} onUpdate={store.updateProperty} onDelete={store.deleteProperty} />
+      <TenantManagerModal
+        open={tenantsOpen}
+        onClose={() => setTenantsOpen(false)}
+        tenants={tenants}
+        properties={properties}
+        transactions={transactions}
+        onAdd={store.addTenant}
+        onUpdate={store.updateTenant}
+        onDelete={store.deleteTenant}
+      />
       <OperationFormModal
         open={formOpen}
         onClose={() => { setFormOpen(false); setEditingGroup(null); }}
         properties={properties}
+        tenants={tenants}
         onSubmitGroup={handleSubmitGroup}
         editingGroup={editingGroup}
       />
