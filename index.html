@@ -11,7 +11,8 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  body { margin: 0; background: #EDEBDF; }
+  html, body { margin: 0; background: #EDEBDF; max-width: 100%; overflow-x: hidden; }
+  * { min-width: 0; }
 </style>
 </head>
 <body>
@@ -97,6 +98,7 @@ const Copy = (p) => <IconBase {...p}><rect width="14" height="14" x="8" y="8" rx
 const Lock = (p) => <IconBase {...p}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></IconBase>;
 const Users = (p) => <IconBase {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></IconBase>;
 const Calculator = (p) => <IconBase {...p}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></IconBase>;
+const Upload = (p) => <IconBase {...p}><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></IconBase>;
 
 /* ============================================================================
  * RÉFÉRENTIEL FISCAL
@@ -147,6 +149,140 @@ function daysBetweenInclusive(isoStart, isoEnd) {
 }
 function maxISO(a, b) { return a > b ? a : b; }
 function minISO(a, b) { return a < b ? a : b; }
+
+/* ============================================================================
+ * ÉCHÉANCIERS DE PRÊT PRÉ-REMPLIS (extraits de tableaux d'amortissement)
+ * Format par ligne : Date ISO;Capital;Intérêts
+ * ==========================================================================*/
+const LOAN_SCHEDULE_PRESETS = {
+  "Tripode": `2026-01-05;1142.78;137.92
+2026-02-05;1143.86;136.84
+2026-03-05;1144.95;135.75
+2026-04-05;1146.04;134.66
+2026-05-05;1147.13;133.57
+2026-06-05;1148.22;132.48
+2026-07-05;1149.31;131.39
+2026-08-05;1150.40;130.30
+2026-09-05;1151.49;129.21
+2026-10-05;1152.59;128.11
+2026-11-05;1153.68;127.02
+2026-12-05;1154.78;125.92
+2027-01-05;1155.87;124.83
+2027-02-05;1156.97;123.73
+2027-03-05;1158.07;122.63
+2027-04-05;1159.17;121.53
+2027-05-05;1160.27;120.43
+2027-06-05;1161.37;119.33
+2027-07-05;1162.48;118.22
+2027-08-05;1163.58;117.12
+2027-09-05;1164.69;116.01
+2027-10-05;1165.79;114.91
+2027-11-05;1166.90;113.80
+2027-12-05;1168.01;112.69
+2028-01-05;1169.12;111.58
+2028-02-05;1170.23;110.47
+2028-03-05;1171.34;109.36
+2028-04-05;1172.46;108.24
+2028-05-05;1173.57;107.13
+2028-06-05;1174.68;106.02
+2028-07-05;1175.80;104.90
+2028-08-05;1176.92;103.78
+2028-09-05;1178.04;102.66
+2028-10-05;1179.15;101.55
+2028-11-05;1180.27;100.43
+2028-12-05;1181.40;99.30
+2029-01-05;1182.52;98.18
+2029-02-05;1183.64;97.06
+2029-03-05;1184.77;95.93
+2029-04-05;1185.89;94.81
+2029-05-05;1187.02;93.68
+2029-06-05;1188.15;92.55
+2029-07-05;1189.27;91.43
+2029-08-05;1190.40;90.30
+2029-09-05;1191.53;89.17
+2029-10-05;1192.67;88.03
+2029-11-05;1193.80;86.90
+2029-12-05;1194.93;85.77
+2030-01-05;1196.07;84.63
+2030-02-05;1197.21;83.49
+2030-03-05;1198.34;82.36
+2030-04-05;1199.48;81.22
+2030-05-05;1200.62;80.08
+2030-06-05;1201.76;78.94
+2030-07-05;1202.90;77.80
+2030-08-05;1204.05;76.65
+2030-09-05;1205.19;75.51
+2030-10-05;1206.33;74.37
+2030-11-05;1207.48;73.22
+2030-12-05;1208.63;72.07
+2031-01-05;1209.78;70.92
+2031-02-05;1210.93;69.77
+2031-03-05;1212.08;68.62
+2031-04-05;1213.23;67.47
+2031-05-05;1214.38;66.32
+2031-06-05;1215.53;65.17
+2031-07-05;1216.69;64.01
+2031-08-05;1217.84;62.86
+2031-09-05;1219.00;61.70
+2031-10-05;1220.16;60.54
+2031-11-05;1221.32;59.38
+2031-12-05;1222.48;58.22
+2032-01-05;1223.64;57.06
+2032-02-05;1224.80;55.90
+2032-03-05;1225.97;54.73
+2032-04-05;1227.13;53.57
+2032-05-05;1228.30;52.40
+2032-06-05;1229.46;51.24
+2032-07-05;1230.63;50.07
+2032-08-05;1231.80;48.90
+2032-09-05;1232.97;47.73
+2032-10-05;1234.14;46.56
+2032-11-05;1235.31;45.39
+2032-12-05;1236.49;44.21
+2033-01-05;1237.66;43.04
+2033-02-05;1238.84;41.86
+2033-03-05;1240.01;40.69
+2033-04-05;1241.19;39.51
+2033-05-05;1242.37;38.33
+2033-06-05;1243.55;37.15
+2033-07-05;1244.73;35.97
+2033-08-05;1245.92;34.78
+2033-09-05;1247.10;33.60
+2033-10-05;1248.28;32.42
+2033-11-05;1249.47;31.23
+2033-12-05;1250.66;30.04
+2034-01-05;1251.85;28.85
+2034-02-05;1253.03;27.67
+2034-03-05;1254.23;26.47
+2034-04-05;1255.42;25.28
+2034-05-05;1256.61;24.09
+2034-06-05;1257.80;22.90
+2034-07-05;1259.00;21.70
+2034-08-05;1260.19;20.51
+2034-09-05;1261.39;19.31
+2034-10-05;1262.59;18.11
+2034-11-05;1263.79;16.91
+2034-12-05;1264.99;15.71
+2035-01-05;1266.19;14.51
+2035-02-05;1267.39;13.31
+2035-03-05;1268.60;12.10
+2035-04-05;1269.80;10.90
+2035-05-05;1271.01;9.69
+2035-06-05;1272.22;8.48
+2035-07-05;1273.43;7.27
+2035-08-05;1274.64;6.06
+2035-09-05;1275.85;4.85
+2035-10-05;1277.06;3.64
+2035-11-05;1278.27;2.43
+2035-12-05;1277.72;1.21`,
+};
+function parseLoanSchedule(text) {
+  return text.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
+    const parts = line.split(/[;,\t]/).map((s) => s.trim());
+    const [date, capital, interets] = parts;
+    return { date, capital: parseFloat(String(capital).replace(",", ".")) || 0, interets: parseFloat(String(interets).replace(",", ".")) || 0 };
+  }).filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.date));
+}
 
 /* ============================================================================
  * UTILITAIRES
@@ -206,11 +342,12 @@ function useLedgerStore() {
   const [properties, setProperties] = useState(() => readLocal("rel_properties", []));
   const [tenants, setTenants] = useState(() => readLocal("rel_tenants", []));
   const [transactions, setTransactions] = useState(() => readLocal("rel_transactions", []));
+  const [regularisations, setRegularisations] = useState(() => readLocal("rel_regularisations", []));
   const [ready, setReady] = useState(!FIREBASE_ENABLED);
 
   useEffect(() => {
     if (!FIREBASE_ENABLED) return;
-    let unsubProps = () => {}; let unsubTenants = () => {}; let unsubTx = () => {};
+    let unsubProps = () => {}; let unsubTenants = () => {}; let unsubTx = () => {}; let unsubRegul = () => {};
     (async () => {
       const api = await getFirestoreApi();
       const propsQuery = api.query(api.collection(api.db, "properties"));
@@ -219,14 +356,17 @@ function useLedgerStore() {
       unsubTenants = api.onSnapshot(tenantsQuery, (snap) => setTenants(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
       const txQuery = api.query(api.collection(api.db, "transactions"), api.orderBy("date", "desc"));
       unsubTx = api.onSnapshot(txQuery, (snap) => setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+      const regulQuery = api.query(api.collection(api.db, "regularisations"));
+      unsubRegul = api.onSnapshot(regulQuery, (snap) => setRegularisations(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
       setReady(true);
     })();
-    return () => { unsubProps(); unsubTenants(); unsubTx(); };
+    return () => { unsubProps(); unsubTenants(); unsubTx(); unsubRegul(); };
   }, []);
 
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_properties", JSON.stringify(properties)); }, [properties]);
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_tenants", JSON.stringify(tenants)); }, [tenants]);
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_transactions", JSON.stringify(transactions)); }, [transactions]);
+  useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_regularisations", JSON.stringify(regularisations)); }, [regularisations]);
 
   const addProperty = useCallback(async (property) => {
     if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.addDoc(api.collection(api.db, "properties"), property); }
@@ -264,8 +404,16 @@ function useLedgerStore() {
     const toRemove = transactions.filter((t) => t.groupId === groupId);
     await Promise.all(toRemove.map((t) => deleteTransaction(t.id)));
   }, [transactions, deleteTransaction]);
+  const addRegularisation = useCallback(async (regul) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.addDoc(api.collection(api.db, "regularisations"), regul); }
+    else setRegularisations((prev) => [...prev, { id: uid(), ...regul }]);
+  }, []);
+  const deleteRegularisation = useCallback(async (id) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.deleteDoc(api.doc(api.db, "regularisations", id)); }
+    else setRegularisations((prev) => prev.filter((r) => r.id !== id));
+  }, []);
 
-  return { ready, properties, tenants, transactions, addProperty, updateProperty, deleteProperty, addTenant, updateTenant, deleteTenant, addTransactions, deleteTransaction, deleteTransactionGroup };
+  return { ready, properties, tenants, transactions, regularisations, addProperty, updateProperty, deleteProperty, addTenant, updateTenant, deleteTenant, addTransactions, deleteTransaction, deleteTransactionGroup, addRegularisation, deleteRegularisation };
 }
 
 /* ============================================================================
@@ -463,13 +611,104 @@ function TenantManagerModal({ open, onClose, tenants, properties, transactions, 
 }
 
 /* ============================================================================
+ * IMPORT D'UN ÉCHÉANCIER DE PRÊT (tableau d'amortissement)
+ * ==========================================================================*/
+function ImportLoanModal({ open, onClose, properties, transactions, onImport }) {
+  const [propertyId, setPropertyId] = useState("");
+  const [scheduleText, setScheduleText] = useState("");
+  const [fromDate, setFromDate] = useState(today().slice(0, 4) + "-01-01");
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    if (!open) { setResult(null); return; }
+    const initial = properties[0]?.id || "";
+    setPropertyId(initial);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!open) return;
+    const property = properties.find((p) => p.id === propertyId);
+    const preset = property ? LOAN_SCHEDULE_PRESETS[property.name] : null;
+    setScheduleText(preset || "");
+    setResult(null);
+  }, [open, propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const parsed = useMemo(() => parseLoanSchedule(scheduleText).filter((r) => r.date >= fromDate), [scheduleText, fromDate]);
+  const totalCapital = parsed.reduce((s, r) => s + r.capital, 0);
+  const totalInterets = parsed.reduce((s, r) => s + r.interets, 0);
+
+  const existingDates = useMemo(() => new Set(
+    transactions.filter((t) => t.propertyId === propertyId && (t.categorie === CAT.CAPITAL || t.categorie === CAT.INTERETS)).map((t) => t.date)
+  ), [transactions, propertyId]);
+  const duplicateCount = parsed.filter((r) => existingDates.has(r.date)).length;
+
+  async function handleImport() {
+    const property = properties.find((p) => p.id === propertyId);
+    if (!property || parsed.length === 0) return;
+    if (duplicateCount > 0) {
+      const ok = window.confirm(`${duplicateCount} échéance(s) sur ${parsed.length} ont déjà une saisie à cette date pour ce bien. Continuer quand même (cela créera des doublons) ?`);
+      if (!ok) return;
+    }
+    const rows = [];
+    for (const r of parsed) {
+      const groupId = uid();
+      const base = { date: r.date, propertyId, groupId };
+      if (r.interets > 0) rows.push({ ...base, categorie: CAT.INTERETS, libelle: `Intérêts emprunt ${property.name}`, montant: r.interets, typeOperation: "Depense" });
+      if (r.capital > 0) rows.push({ ...base, categorie: CAT.CAPITAL, libelle: `Capital amorti ${property.name}`, montant: r.capital, typeOperation: "Depense" });
+    }
+    await onImport(rows);
+    setResult({ count: parsed.length });
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Importer un échéancier de prêt" wide>
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Bien concerné">
+          <select className={inputClasses} value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+            {properties.length === 0 && <option value="">Ajoute un bien d'abord</option>}
+            {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Importer à partir du">
+          <input type="date" className={inputClasses} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </Field>
+      </div>
+      <Field label="Échéancier (une ligne par échéance : Date;Capital;Intérêts)">
+        <textarea
+          className={`${inputClasses} h-56 font-mono text-xs`}
+          value={scheduleText}
+          onChange={(e) => setScheduleText(e.target.value)}
+          placeholder={"2026-01-05;1142.78;137.92\n2026-02-05;1143.86;136.84\n..."}
+        />
+      </Field>
+      <p className="mt-2 text-xs text-[#8A876F]">
+        {parsed.length} échéance(s) reconnue(s) à partir du {formatDateForDisplay(fromDate)} · Total capital : {formatCurrency(totalCapital)} · Total intérêts : {formatCurrency(totalInterets)}.
+        L'assurance emprunteur n'est pas incluse — modifie ensuite chaque saisie pour l'ajouter.
+        {duplicateCount > 0 && <span className="text-[#A2432A]"> {duplicateCount} échéance(s) semblent déjà saisies à ces dates pour ce bien.</span>}
+      </p>
+
+      {result && (
+        <p className="mt-3 text-sm text-[#3F6B4F]">{result.count} échéance(s) importée(s) avec succès. Tu peux les retrouver et compléter l'assurance via « Modifier » sur chaque ligne.</p>
+      )}
+
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Fermer</button>
+        <button type="button" onClick={handleImport} disabled={!propertyId || parsed.length === 0} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">Importer {parsed.length > 0 ? `(${parsed.length})` : ""}</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================================
  * RÉGULARISATION DE CHARGES ANNUELLES
  * ==========================================================================*/
-function ChargeRegulModal({ open, onClose, properties, tenants, transactions }) {
+function ChargeRegulModal({ open, onClose, properties, tenants, transactions, regularisations, onSave, onDelete }) {
   const [propertyId, setPropertyId] = useState(properties[0]?.id || "");
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
-  const [chargesReelles, setChargesReelles] = useState("");
+  const [chargesAppart, setChargesAppart] = useState("");
+  const [chargesParking, setChargesParking] = useState("");
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (open && !propertyId && properties[0]) setPropertyId(properties[0].id);
@@ -480,7 +719,7 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions }) 
   const result = useMemo(() => {
     if (!propertyId || !periodStart || !periodEnd || periodEnd < periodStart) return null;
     const totalDays = daysBetweenInclusive(periodStart, periodEnd);
-    const totalCharges = num(chargesReelles);
+    const totalCharges = num(chargesAppart) + num(chargesParking);
     const tenantsForProperty = tenants.filter((t) => t.propertyId === propertyId);
     const rows = [];
     for (const t of tenantsForProperty) {
@@ -497,7 +736,29 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions }) 
       rows.push({ tenant: t, overlapStart, overlapEnd, presenceDays, quotePart, provisionsPaid, solde });
     }
     return { totalDays, totalCharges, rows };
-  }, [propertyId, periodStart, periodEnd, chargesReelles, tenants, transactions]);
+  }, [propertyId, periodStart, periodEnd, chargesAppart, chargesParking, tenants, transactions]);
+
+  useEffect(() => { setSaved(false); }, [propertyId, periodStart, periodEnd, chargesAppart, chargesParking]);
+
+  async function handleSave() {
+    if (!result || result.rows.length === 0) return;
+    await onSave({
+      propertyId, periodStart, periodEnd,
+      chargesAppart: num(chargesAppart), chargesParking: num(chargesParking),
+      chargesReelles: result.totalCharges,
+      createdAt: today(),
+      rows: result.rows.map((r) => ({
+        tenantId: r.tenant.id, tenantName: r.tenant.name,
+        overlapStart: r.overlapStart, overlapEnd: r.overlapEnd, presenceDays: r.presenceDays,
+        quotePart: r.quotePart, provisionsPaid: r.provisionsPaid, solde: r.solde,
+      })),
+    });
+    setSaved(true);
+  }
+
+  const history = useMemo(() => regularisations
+    .filter((r) => !propertyId || r.propertyId === propertyId)
+    .sort((a, b) => (a.periodEnd < b.periodEnd ? 1 : -1)), [regularisations, propertyId]);
 
   return (
     <Modal open={open} onClose={onClose} title="Régularisation de charges annuelles" wide>
@@ -516,10 +777,16 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions }) 
         <Field label="Fin de période">
           <input type="date" className={inputClasses} value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
         </Field>
-        <Field label="Charges réelles (€)">
-          <input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesReelles} onChange={(e) => setChargesReelles(e.target.value)} placeholder="1200" />
+        <Field label="Charges réelles — Appartement (€)">
+          <input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesAppart} onChange={(e) => setChargesAppart(e.target.value)} placeholder="1100" />
+        </Field>
+        <Field label="Charges réelles — Parking (€)">
+          <input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesParking} onChange={(e) => setChargesParking(e.target.value)} placeholder="100" />
         </Field>
       </div>
+      {(num(chargesAppart) > 0 || num(chargesParking) > 0) && (
+        <p className="-mt-3 mb-5 text-xs text-[#8A876F]">Total charges réelles retenu : <span className="font-mono tabular-nums">{formatCurrency(num(chargesAppart) + num(chargesParking))}</span></p>
+      )}
 
       {!result && (
         <p className="text-sm text-[#8A876F]">Renseigne le bien, la période et le montant des charges réelles pour calculer la régularisation.</p>
@@ -548,6 +815,44 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions }) 
               </div>
             </div>
           ))}
+          <div className="flex items-center justify-end gap-2">
+            {saved && <span className="text-sm text-[#3F6B4F]">Enregistrée ✓</span>}
+            <button type="button" onClick={handleSave} disabled={saved} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">
+              {saved ? "Enregistrée" : "Enregistrer cette régularisation"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="mt-6 border-t border-[#EFEDE0] pt-4">
+          <h3 className="mb-2 text-sm font-medium text-[#5B5849]">Historique des régularisations enregistrées</h3>
+          <div className="space-y-2">
+            {history.map((h) => (
+              <div key={h.id} className="rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-sm text-[#20211D]">{formatDateForDisplay(h.periodStart)} → {formatDateForDisplay(h.periodEnd)}</div>
+                    <div className="text-xs text-[#8A876F]">
+                      Charges réelles : {formatCurrency(h.chargesReelles)}
+                      {(h.chargesAppart != null || h.chargesParking != null) && ` (Appart. ${formatCurrency(h.chargesAppart || 0)} + Parking ${formatCurrency(h.chargesParking || 0)})`}
+                    </div>
+                  </div>
+                  <button onClick={() => onDelete(h.id)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                </div>
+                <div className="mt-2 space-y-1 border-t border-[#EFEDE0] pt-2 text-xs text-[#6B6858]">
+                  {(h.rows || []).map((r, i) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <span>{r.tenantName}</span>
+                      <span className={r.solde >= 0 ? "text-[#3F6B4F]" : "text-[#A2432A]"}>
+                        {r.solde >= 0 ? "À rembourser : " : "Complément : "}{formatCurrency(Math.abs(r.solde))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </Modal>
@@ -745,6 +1050,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
   const [propertiesOpen, setPropertiesOpen] = useState(false);
   const [tenantsOpen, setTenantsOpen] = useState(false);
   const [regulOpen, setRegulOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   const propertiesById = useMemo(() => Object.fromEntries(properties.map((p) => [p.id, p])), [properties]);
   const tenantsById = useMemo(() => Object.fromEntries(tenants.map((t) => [t.id, t])), [tenants]);
@@ -843,11 +1149,12 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
             <h1 className="text-2xl font-semibold tracking-tight text-[#20211D]">Registre locatif</h1>
             <p className="text-sm text-[#6B6858]">Saisie des loyers, emprunts et charges — export prêt pour Qlower.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setPropertiesOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]"><Settings size={15} />Mes biens</button>
-            <button onClick={() => setTenantsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]"><Users size={15} />Locataires</button>
-            <button onClick={() => setRegulOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]"><Calculator size={15} />Régul. charges</button>
-            <button onClick={handleExport} className="flex items-center gap-1.5 rounded-lg border border-[#20211D] bg-[#20211D] px-3 py-2 text-sm font-medium text-[#F7F5EC] hover:bg-[#3A3B33]"><Download size={15} />Exporter en CSV</button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => setPropertiesOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Mes biens"><Settings size={15} /><span className="hidden sm:inline">Mes biens</span></button>
+            <button onClick={() => setTenantsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Locataires"><Users size={15} /><span className="hidden sm:inline">Locataires</span></button>
+            <button onClick={() => setRegulOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Régularisation de charges"><Calculator size={15} /><span className="hidden sm:inline">Régul. charges</span></button>
+            <button onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Importer un échéancier de prêt"><Upload size={15} /><span className="hidden sm:inline">Importer emprunt</span></button>
+            <button onClick={handleExport} className="flex items-center gap-1.5 rounded-lg border border-[#20211D] bg-[#20211D] px-2.5 py-2 text-sm font-medium text-[#F7F5EC] hover:bg-[#3A3B33]" aria-label="Exporter en CSV"><Download size={15} /><span className="hidden sm:inline">Exporter en CSV</span></button>
             {showSignOut && <button onClick={onSignOut} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Se déconnecter"><LogOut size={15} /></button>}
           </div>
         </div>
@@ -978,12 +1285,22 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         onUpdate={store.updateTenant}
         onDelete={store.deleteTenant}
       />
+      <ImportLoanModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        properties={properties}
+        transactions={transactions}
+        onImport={store.addTransactions}
+      />
       <ChargeRegulModal
         open={regulOpen}
         onClose={() => setRegulOpen(false)}
         properties={properties}
         tenants={tenants}
         transactions={transactions}
+        regularisations={store.regularisations}
+        onSave={store.addRegularisation}
+        onDelete={store.deleteRegularisation}
       />
       <OperationFormModal
         open={formOpen}
