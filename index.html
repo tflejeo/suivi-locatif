@@ -125,6 +125,15 @@ const CHARGE_CATEGORIES = [CAT.CHARGES_COPRO, CAT.ASSURANCE_PNO, CAT.TAXE_FONCIE
 const NON_DEDUCTIBLE = new Set([CAT.CAPITAL]);
 const RECETTE_CATS = new Set([CAT.LOYER_HC, CAT.PROVISIONS]);
 
+const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+function monthLabel(iso) { return MONTHS_FR[parseInt(iso.slice(5, 7), 10) - 1]; }
+function detectGroupTab(rows) {
+  const cats = new Set(rows.map((r) => r.categorie));
+  if (cats.has(CAT.LOYER_HC) || cats.has(CAT.PROVISIONS)) return "LOYER";
+  if (cats.has(CAT.INTERETS) || cats.has(CAT.ASSURANCE_EMPRUNT) || cats.has(CAT.CAPITAL)) return "EMPRUNT";
+  return "CHARGE";
+}
+
 /* ============================================================================
  * UTILITAIRES
  * ==========================================================================*/
@@ -488,6 +497,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
   const [selectedPropertyId, setSelectedPropertyId] = useState("ALL");
   const [yearFilter, setYearFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [viewMode, setViewMode] = useState("DETAIL");
   const [formOpen, setFormOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
@@ -501,6 +511,30 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
     .filter((t) => yearFilter === "ALL" || t.date.startsWith(yearFilter))
     .filter((t) => categoryFilter === "ALL" || t.categorie === categoryFilter)
     .sort((a, b) => (a.date < b.date ? 1 : -1)), [transactions, selectedPropertyId, yearFilter, categoryFilter]);
+
+  const displayRows = useMemo(() => {
+    if (viewMode === "DETAIL") {
+      return filtered.map((t) => ({
+        key: t.id, date: t.date, propertyId: t.propertyId, montant: t.montant,
+        isRecette: t.typeOperation === "Recette", title: t.categorie, subtitle: t.libelle || "", representative: t,
+      }));
+    }
+    const groups = {};
+    for (const t of filtered) {
+      const key = t.groupId || t.id;
+      (groups[key] = groups[key] || []).push(t);
+    }
+    return Object.values(groups).map((rows) => {
+      const first = rows[0];
+      const tab = detectGroupTab(rows);
+      const montant = rows.reduce((sum, r) => sum + r.montant, 0);
+      const isRecette = rows.every((r) => r.typeOperation === "Recette");
+      const title = tab === "LOYER" ? `Loyer ${monthLabel(first.date)}`
+        : tab === "EMPRUNT" ? `Mensualité ${monthLabel(first.date)}`
+        : first.categorie;
+      return { key: first.groupId || first.id, date: first.date, propertyId: first.propertyId, montant, isRecette, title, subtitle: tab === "CHARGE" ? (first.libelle || "") : "", representative: first };
+    }).sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, [filtered, viewMode]);
 
   const kpis = useMemo(() => {
     let totalLoyers = 0, totalCharges = 0, net = 0;
@@ -521,11 +555,8 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
 
   function buildGroupValues(t) {
     const group = t.groupId ? transactions.filter((x) => x.groupId === t.groupId) : [t];
-    const cats = new Set(group.map((x) => x.categorie));
     const amountFor = (cat) => group.find((x) => x.categorie === cat)?.montant ?? "";
-    let tab = "CHARGE";
-    if (cats.has(CAT.LOYER_HC) || cats.has(CAT.PROVISIONS)) tab = "LOYER";
-    else if (cats.has(CAT.INTERETS) || cats.has(CAT.ASSURANCE_EMPRUNT) || cats.has(CAT.CAPITAL)) tab = "EMPRUNT";
+    const tab = detectGroupTab(group);
     if (tab === "LOYER") return { tab, loyerHC: amountFor(CAT.LOYER_HC), provisions: amountFor(CAT.PROVISIONS) };
     if (tab === "EMPRUNT") return { tab, capital: amountFor(CAT.CAPITAL), interets: amountFor(CAT.INTERETS), assurance: amountFor(CAT.ASSURANCE_EMPRUNT) };
     return { tab, chargeCategorie: t.categorie, chargeMontant: t.montant, chargeLibelle: t.libelle || "" };
@@ -590,6 +621,10 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <button onClick={openNewForm} disabled={properties.length === 0} className="flex items-center gap-1.5 rounded-lg bg-[#9A5B34] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40"><Plus size={16} />Nouvelle opération</button>
           <div className="flex flex-wrap gap-2">
+            <div className="flex rounded-lg bg-[#EAE7D9] p-1 text-sm">
+              <button onClick={() => setViewMode("SIMPLE")} className={`rounded-md px-3 py-1.5 transition-colors ${viewMode === "SIMPLE" ? "bg-white text-[#20211D] shadow-sm" : "text-[#6B6858]"}`}>Simplifiée</button>
+              <button onClick={() => setViewMode("DETAIL")} className={`rounded-md px-3 py-1.5 transition-colors ${viewMode === "DETAIL" ? "bg-white text-[#20211D] shadow-sm" : "text-[#6B6858]"}`}>Détaillée</button>
+            </div>
             <select className="rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849]" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
               <option value="ALL">Toutes les années</option>
               {years.map((y) => <option key={y} value={y}>{y}</option>)}
@@ -607,28 +642,28 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
 
         {/* Vue mobile : cartes empilées */}
         <div className="space-y-2 sm:hidden">
-          {filtered.length === 0 && (
+          {displayRows.length === 0 && (
             <div className="rounded-xl border border-[#DEDAC9] bg-white px-4 py-10 text-center text-[#8A876F]">Aucune opération pour ces filtres.</div>
           )}
-          {filtered.map((t) => {
-            const property = propertiesById[t.propertyId]; const isRecette = t.typeOperation === "Recette";
+          {displayRows.map((row) => {
+            const property = propertiesById[row.propertyId];
             return (
-              <div key={t.id} className="rounded-xl border border-[#DEDAC9] bg-white px-4 py-3">
+              <div key={row.key} className="rounded-xl border border-[#DEDAC9] bg-white px-4 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="text-sm text-[#20211D]">{property?.name || "—"}</div>
-                    <div className="text-xs text-[#8A876F]">{formatDateForDisplay(t.date)}</div>
+                    <div className="text-xs text-[#8A876F]">{formatDateForDisplay(row.date)}</div>
                   </div>
-                  <div className={`whitespace-nowrap font-mono text-base tabular-nums ${isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>
-                    {isRecette ? "+" : "−"} {formatCurrency(t.montant)}
+                  <div className={`whitespace-nowrap font-mono text-base tabular-nums ${row.isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>
+                    {row.isRecette ? "+" : "−"} {formatCurrency(row.montant)}
                   </div>
                 </div>
-                <div className="mt-1 text-sm text-[#5B5849]">{t.categorie}</div>
-                {t.libelle && <div className="text-xs text-[#8A876F]">{t.libelle}</div>}
+                <div className="mt-1 text-sm text-[#5B5849]">{row.title}</div>
+                {row.subtitle && <div className="text-xs text-[#8A876F]">{row.subtitle}</div>}
                 <div className="mt-2 flex justify-end gap-1">
-                  <button onClick={() => handleDuplicateRow(t)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Dupliquer"><Copy size={15} /></button>
-                  <button onClick={() => handleEditRow(t)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
-                  <button onClick={() => handleDeleteRow(t)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                  <button onClick={() => handleDuplicateRow(row.representative)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Dupliquer"><Copy size={15} /></button>
+                  <button onClick={() => handleEditRow(row.representative)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
+                  <button onClick={() => handleDeleteRow(row.representative)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
                 </div>
               </div>
             );
@@ -649,21 +684,21 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-[#8A876F]">Aucune opération pour ces filtres.</td></tr>}
-              {filtered.map((t) => {
-                const property = propertiesById[t.propertyId]; const isRecette = t.typeOperation === "Recette";
+              {displayRows.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-[#8A876F]">Aucune opération pour ces filtres.</td></tr>}
+              {displayRows.map((row) => {
+                const property = propertiesById[row.propertyId];
                 return (
-                  <tr key={t.id} className="border-b border-[#EFEDE0] last:border-0 hover:bg-[#FAF9F2]">
-                    <td className="whitespace-nowrap px-4 py-3 text-[#20211D]">{formatDateForDisplay(t.date)}</td>
+                  <tr key={row.key} className="border-b border-[#EFEDE0] last:border-0 hover:bg-[#FAF9F2]">
+                    <td className="whitespace-nowrap px-4 py-3 text-[#20211D]">{formatDateForDisplay(row.date)}</td>
                     <td className="px-4 py-3 text-[#20211D]">{property?.name || "—"}</td>
-                    <td className="px-4 py-3 text-[#5B5849]">{t.categorie}</td>
-                    <td className="px-4 py-3 text-[#5B5849]">{t.libelle || "—"}</td>
-                    <td className={`whitespace-nowrap px-4 py-3 text-right font-mono tabular-nums ${isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>{isRecette ? "+" : "−"} {formatCurrency(t.montant)}</td>
+                    <td className="px-4 py-3 text-[#5B5849]">{row.title}</td>
+                    <td className="px-4 py-3 text-[#5B5849]">{row.subtitle || "—"}</td>
+                    <td className={`whitespace-nowrap px-4 py-3 text-right font-mono tabular-nums ${row.isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>{row.isRecette ? "+" : "−"} {formatCurrency(row.montant)}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">
-                        <button onClick={() => handleDuplicateRow(t)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Dupliquer"><Copy size={15} /></button>
-                        <button onClick={() => handleEditRow(t)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
-                        <button onClick={() => handleDeleteRow(t)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                        <button onClick={() => handleDuplicateRow(row.representative)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Dupliquer"><Copy size={15} /></button>
+                        <button onClick={() => handleEditRow(row.representative)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
+                        <button onClick={() => handleDeleteRow(row.representative)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
                       </div>
                     </td>
                   </tr>
