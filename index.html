@@ -59,12 +59,12 @@ async function getAuthApi() {
   const { initializeApp, getApps, getApp } = await import(
     `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-app.js`
   );
-  const { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } = await import(
+  const { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut } = await import(
     `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-auth.js`
   );
   const app = getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG);
   const auth = getAuth(app);
-  authApi = { auth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut };
+  authApi = { auth, onAuthStateChanged, GoogleAuthProvider, signInWithRedirect, getRedirectResult, signOut };
   return authApi;
 }
 
@@ -611,18 +611,22 @@ function GoogleG({ size = 18 }) {
   );
 }
 
-function LoginScreen() {
+function LoginScreen({ externalError }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const shownError = error || externalError;
 
   async function handleGoogleSignIn() {
     setError(""); setLoading(true);
     try {
       const api = await getAuthApi();
-      await api.signInWithPopup(api.auth, new api.GoogleAuthProvider());
+      await api.signInWithRedirect(api.auth, new api.GoogleAuthProvider());
+      // La page se recharge après le choix du compte Google ;
+      // le résultat est récupéré dans <App/> via getRedirectResult.
     } catch (err) {
-      setError("Connexion refusée ou annulée. Vérifie que ton adresse Google est bien autorisée.");
-    } finally { setLoading(false); }
+      setError("Erreur : " + (err?.message || err));
+      setLoading(false);
+    }
   }
 
   return (
@@ -630,7 +634,7 @@ function LoginScreen() {
       <div className="w-full max-w-sm rounded-2xl border border-[#DEDAC9] bg-white p-7 text-center">
         <div className="mb-5 flex items-center justify-center gap-2 text-[#20211D]"><Lock size={18} /><h1 className="text-lg font-semibold">Registre locatif</h1></div>
         <p className="mb-5 text-sm text-[#6B6858]">Connexion requise pour accéder à tes données.</p>
-        {error && <p className="mb-3 text-sm text-[#A2432A]">{error}</p>}
+        {shownError && <p className="mb-3 text-sm text-[#A2432A]">{shownError}</p>}
         <button onClick={handleGoogleSignIn} disabled={loading}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#D6D2C0] bg-white px-4 py-2.5 text-sm font-medium text-[#20211D] hover:bg-[#F7F5EC] disabled:opacity-40">
           <GoogleG size={18} />{loading ? "Connexion…" : "Se connecter avec Google"}
@@ -646,12 +650,18 @@ function LoginScreen() {
 function App() {
   const [authChecked, setAuthChecked] = useState(!FIREBASE_ENABLED);
   const [user, setUser] = useState(null);
+  const [authError, setAuthError] = useState("");
 
   useEffect(() => {
     if (!FIREBASE_ENABLED) return;
     let unsub = () => {};
     (async () => {
       const api = await getAuthApi();
+      try {
+        await api.getRedirectResult(api.auth);
+      } catch (err) {
+        setAuthError("Erreur : " + (err?.message || err));
+      }
       unsub = api.onAuthStateChanged(api.auth, (u) => { setUser(u); setAuthChecked(true); });
     })();
     return () => unsub();
@@ -660,7 +670,7 @@ function App() {
   async function handleSignOut() { const api = await getAuthApi(); await api.signOut(api.auth); }
 
   if (!authChecked) return <div className="flex min-h-screen items-center justify-center bg-[#EDEBDF] text-[#6B6858]">Chargement…</div>;
-  if (FIREBASE_ENABLED && !user) return <LoginScreen />;
+  if (FIREBASE_ENABLED && !user) return <LoginScreen externalError={authError} />;
   return <RealEstateLedger onSignOut={handleSignOut} showSignOut={FIREBASE_ENABLED} />;
 }
 
