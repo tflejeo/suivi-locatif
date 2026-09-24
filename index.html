@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Registre locatif</title>
+
+<!-- React + transform JSX dans le navigateur : pas de npm run build -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { margin: 0; background: #EDEBDF; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useCallback } = React;
+
+/* ============================================================================
+ * CONFIGURATION FIREBASE — à compléter avec ton projet
+ * ==========================================================================*/
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC2_OQ66o_y6RtLZPBiBvJU6I6z35ecDjk",
+  authDomain: "compta-locative.firebaseapp.com",
+  projectId: "compta-locative",
+  storageBucket: "compta-locative.firebasestorage.app",
+  messagingSenderId: "374630251846",
+  appId: "1:374630251846:web:841be015274471027fb947",
+};
+const FIREBASE_ENABLED = Boolean(FIREBASE_CONFIG.projectId);
+const FIREBASE_SDK_VERSION = "10.13.0";
+
+let firestoreApi = null;
+async function getFirestoreApi() {
+  if (!FIREBASE_ENABLED) return null;
+  if (firestoreApi) return firestoreApi;
+  const { initializeApp, getApps, getApp } = await import(
+    `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-app.js`
+  );
+  const {
+    getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy,
+  } = await import(
+    `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-firestore.js`
+  );
+  const app = getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG);
+  const db = getFirestore(app);
+  firestoreApi = { db, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy };
+  return firestoreApi;
+}
+
+let authApi = null;
+async function getAuthApi() {
+  if (!FIREBASE_ENABLED) return null;
+  if (authApi) return authApi;
+  const { initializeApp, getApps, getApp } = await import(
+    `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-app.js`
+  );
+  const { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } = await import(
+    `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-auth.js`
+  );
+  const app = getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG);
+  const auth = getAuth(app);
+  authApi = { auth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut };
+  return authApi;
+}
+
+/* ============================================================================
+ * ICÔNES (SVG inline, style Lucide — licence ISC, aucune dépendance npm)
+ * ==========================================================================*/
+function IconBase({ size = 16, className = "", children }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      {children}
+    </svg>
+  );
+}
+const Plus = (p) => <IconBase {...p}><path d="M5 12h14"/><path d="M12 5v14"/></IconBase>;
+const Trash2 = (p) => <IconBase {...p}><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></IconBase>;
+const Pencil = (p) => <IconBase {...p}><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></IconBase>;
+const Download = (p) => <IconBase {...p}><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></IconBase>;
+const Settings = (p) => <IconBase {...p}><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></IconBase>;
+const X = (p) => <IconBase {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></IconBase>;
+const Home = (p) => <IconBase {...p}><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></IconBase>;
+const Building2 = (p) => <IconBase {...p}><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M12 6h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M16 6h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/><path d="M8 6h.01"/><path d="M9 22v-3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/><rect x="4" y="2" width="16" height="20" rx="2"/></IconBase>;
+const Landmark = (p) => <IconBase {...p}><path d="M10 18v-7"/><path d="M11.119 2.205a2 2 0 0 1 1.762 0l7.84 3.846A.5.5 0 0 1 20.5 7h-17a.5.5 0 0 1-.22-.949z"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M3 22h18"/><path d="M6 18v-7"/></IconBase>;
+const Receipt = (p) => <IconBase {...p}><path d="M12 17V7"/><path d="M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8"/><path d="M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 1 1 0 0 1-1-1z"/></IconBase>;
+const Wallet = (p) => <IconBase {...p}><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></IconBase>;
+const ArrowUpRight = (p) => <IconBase {...p}><path d="M7 7h10v10"/><path d="M7 17 17 7"/></IconBase>;
+const ArrowDownRight = (p) => <IconBase {...p}><path d="m7 7 10 10"/><path d="M17 7v10H7"/></IconBase>;
+const LogOut = (p) => <IconBase {...p}><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></IconBase>;
+const Lock = (p) => <IconBase {...p}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></IconBase>;
+
+/* ============================================================================
+ * RÉFÉRENTIEL FISCAL
+ * ==========================================================================*/
+const REGIMES = {
+  LMNP: { id: "LMNP", label: "LMNP réel" },
+  FONCIER: { id: "FONCIER", label: "Revenus fonciers" },
+};
+const REGIME_ACCENT = {
+  LMNP: { text: "text-[#9A5B34]", bg: "bg-[#9A5B34]/10" },
+  FONCIER: { text: "text-[#3D5A73]", bg: "bg-[#3D5A73]/10" },
+};
+const CAT = {
+  LOYER_HC: "Loyer Hors Charges",
+  PROVISIONS: "Provisions sur charges",
+  INTERETS: "Intérêts d'emprunt",
+  ASSURANCE_EMPRUNT: "Assurance emprunteur",
+  CAPITAL: "Capital prêt (non déductible)",
+  CHARGES_COPRO: "Charges copropriété / Provisions syndic",
+  ASSURANCE_PNO: "Assurance PNO",
+  TAXE_FONCIERE: "Taxe foncière (hors TEOM)",
+  TRAVAUX: "Travaux d'entretien & réparation",
+  FRAIS_GESTION: "Frais de gestion / Conciergerie",
+  HONORAIRES: "Honoraires d'agence",
+  AUTRE: "Autre charge déductible",
+};
+const CHARGE_CATEGORIES = [CAT.CHARGES_COPRO, CAT.ASSURANCE_PNO, CAT.TAXE_FONCIERE, CAT.TRAVAUX, CAT.FRAIS_GESTION, CAT.HONORAIRES, CAT.AUTRE];
+const NON_DEDUCTIBLE = new Set([CAT.CAPITAL]);
+const RECETTE_CATS = new Set([CAT.LOYER_HC, CAT.PROVISIONS]);
+
+/* ============================================================================
+ * UTILITAIRES
+ * ==========================================================================*/
+const CSV_SEPARATOR = ";";
+const DECIMAL_SEPARATOR = ",";
+const DATE_FORMAT = "DD/MM/YYYY";
+
+function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function formatCurrency(n) {
+  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(n || 0);
+}
+function formatDateForDisplay(iso) { const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; }
+function formatDateForCSV(iso) {
+  if (DATE_FORMAT === "YYYY-MM-DD") return iso;
+  const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`;
+}
+function formatAmountForCSV(n) {
+  const fixed = Math.abs(n).toFixed(2);
+  return DECIMAL_SEPARATOR === "," ? fixed.replace(".", ",") : fixed;
+}
+function buildCSV(transactions, propertiesById) {
+  const header = ["Date","Propriete","RegimeFiscal","CategorieFiscale","Libelle","Montant","TypeOperation"].join(CSV_SEPARATOR);
+  const rows = transactions.map((t) => {
+    const property = propertiesById[t.propertyId];
+    const signed = t.typeOperation === "Recette" ? t.montant : -t.montant;
+    const cells = [
+      formatDateForCSV(t.date),
+      property ? property.name : "",
+      property ? REGIMES[property.regime].label : "",
+      t.categorie,
+      t.libelle || "",
+      (signed < 0 ? "-" : "") + formatAmountForCSV(signed),
+      t.typeOperation,
+    ];
+    return cells.map((c) => (String(c).includes(CSV_SEPARATOR) ? `"${c}"` : c)).join(CSV_SEPARATOR);
+  });
+  return [header, ...rows].join("\r\n");
+}
+function downloadCSV(content, filename) {
+  const blob = new Blob(["\uFEFF" + content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url; link.setAttribute("download", filename);
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/* ============================================================================
+ * PERSISTANCE — Firestore si configuré, sinon localStorage
+ * ==========================================================================*/
+function useLedgerStore() {
+  const readLocal = (key, fallback) => {
+    try { const raw = window.localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+    catch { return fallback; }
+  };
+  const [properties, setProperties] = useState(() => readLocal("rel_properties", []));
+  const [transactions, setTransactions] = useState(() => readLocal("rel_transactions", []));
+  const [ready, setReady] = useState(!FIREBASE_ENABLED);
+
+  useEffect(() => {
+    if (!FIREBASE_ENABLED) return;
+    let unsubProps = () => {}; let unsubTx = () => {};
+    (async () => {
+      const api = await getFirestoreApi();
+      const propsQuery = api.query(api.collection(api.db, "properties"));
+      unsubProps = api.onSnapshot(propsQuery, (snap) => setProperties(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+      const txQuery = api.query(api.collection(api.db, "transactions"), api.orderBy("date", "desc"));
+      unsubTx = api.onSnapshot(txQuery, (snap) => setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+      setReady(true);
+    })();
+    return () => { unsubProps(); unsubTx(); };
+  }, []);
+
+  useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_properties", JSON.stringify(properties)); }, [properties]);
+  useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_transactions", JSON.stringify(transactions)); }, [transactions]);
+
+  const addProperty = useCallback(async (property) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.addDoc(api.collection(api.db, "properties"), property); }
+    else setProperties((prev) => [...prev, { id: uid(), ...property }]);
+  }, []);
+  const updateProperty = useCallback(async (id, patch) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.updateDoc(api.doc(api.db, "properties", id), patch); }
+    else setProperties((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  }, []);
+  const deleteProperty = useCallback(async (id) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.deleteDoc(api.doc(api.db, "properties", id)); }
+    else setProperties((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+  const addTransactions = useCallback(async (list) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await Promise.all(list.map((t) => api.addDoc(api.collection(api.db, "transactions"), t))); }
+    else setTransactions((prev) => [...list.map((t) => ({ id: uid(), ...t })), ...prev]);
+  }, []);
+  const deleteTransaction = useCallback(async (id) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.deleteDoc(api.doc(api.db, "transactions", id)); }
+    else setTransactions((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+  const deleteTransactionGroup = useCallback(async (groupId) => {
+    const toRemove = transactions.filter((t) => t.groupId === groupId);
+    await Promise.all(toRemove.map((t) => deleteTransaction(t.id)));
+  }, [transactions, deleteTransaction]);
+
+  return { ready, properties, transactions, addProperty, updateProperty, deleteProperty, addTransactions, deleteTransaction, deleteTransactionGroup };
+}
+
+/* ============================================================================
+ * ATOMES D'INTERFACE
+ * ==========================================================================*/
+function KPICard({ label, value, tone = "neutral", icon: Icon }) {
+  const toneClasses = { positive: "text-[#3F6B4F]", negative: "text-[#A2432A]", neutral: "text-[#20211D]" }[tone];
+  return (
+    <div className="flex-1 min-w-[180px] rounded-xl border border-[#DEDAC9] bg-white/70 px-5 py-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-[#6B6858]">{label}</span>
+        {Icon && <Icon size={16} className="text-[#9C987F]" />}
+      </div>
+      <div className={`mt-2 font-mono text-2xl tabular-nums ${toneClasses}`}>{formatCurrency(value)}</div>
+    </div>
+  );
+}
+function Field({ label, children }) {
+  return (<label className="block"><span className="mb-1 block text-sm text-[#5B5849]">{label}</span>{children}</label>);
+}
+const inputClasses = "w-full rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-[#20211D] outline-none focus:border-[#9A5B34] focus:ring-2 focus:ring-[#9A5B34]/20";
+
+function Modal({ open, onClose, title, children, wide }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#20211D]/40 p-4">
+      <div className={`max-h-[90vh] w-full ${wide ? "max-w-2xl" : "max-w-md"} overflow-y-auto rounded-2xl bg-[#F7F5EC] p-6 shadow-xl`}>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-[#20211D]">{title}</h2>
+          <button onClick={onClose} className="rounded-full p-1 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Fermer"><X size={18} /></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+ * GESTION DES BIENS
+ * ==========================================================================*/
+function PropertyManagerModal({ open, onClose, properties, onAdd, onUpdate, onDelete }) {
+  const [name, setName] = useState("");
+  const [regime, setRegime] = useState("LMNP");
+  const [editingId, setEditingId] = useState(null);
+
+  function resetForm() { setName(""); setRegime("LMNP"); setEditingId(null); }
+  function startEdit(p) { setEditingId(p.id); setName(p.name); setRegime(p.regime); }
+  async function submit(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    if (editingId) await onUpdate(editingId, { name: name.trim(), regime });
+    else await onAdd({ name: name.trim(), regime });
+    resetForm();
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Mes biens" wide>
+      <form onSubmit={submit} className="mb-6 flex flex-wrap items-end gap-3">
+        <div className="min-w-[200px] flex-1">
+          <Field label="Nom du bien">
+            <input className={inputClasses} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. LMNP Studio Nantes" />
+          </Field>
+        </div>
+        <div className="w-48">
+          <Field label="Régime fiscal">
+            <select className={inputClasses} value={regime} onChange={(e) => setRegime(e.target.value)}>
+              {Object.values(REGIMES).map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </select>
+          </Field>
+        </div>
+        <button type="submit" className="rounded-lg bg-[#20211D] px-4 py-2 text-sm font-medium text-[#F7F5EC] hover:bg-[#3A3B33]">
+          {editingId ? "Enregistrer" : "Ajouter"}
+        </button>
+        {editingId && <button type="button" onClick={resetForm} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Annuler</button>}
+      </form>
+      <div className="space-y-2">
+        {properties.length === 0 && <p className="text-sm text-[#8A876F]">Aucun bien enregistré pour l'instant.</p>}
+        {properties.map((p) => {
+          const accent = REGIME_ACCENT[p.regime];
+          return (
+            <div key={p.id} className="flex items-center justify-between rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className={`rounded-full px-2 py-0.5 text-xs ${accent.bg} ${accent.text}`}>{REGIMES[p.regime].label}</span>
+                <span className="text-[#20211D]">{p.name}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => startEdit(p)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
+                <button onClick={() => onDelete(p.id)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================================
+ * FORMULAIRE DE SAISIE
+ * ==========================================================================*/
+const OPERATION_TABS = [
+  { id: "LOYER", label: "Loyer reçu", icon: Home },
+  { id: "EMPRUNT", label: "Mensualité d'emprunt", icon: Landmark },
+  { id: "CHARGE", label: "Charge / Dépense", icon: Receipt },
+];
+function today() { return new Date().toISOString().slice(0, 10); }
+
+function OperationFormModal({ open, onClose, properties, onSubmitGroup }) {
+  const [tab, setTab] = useState("LOYER");
+  const [date, setDate] = useState(today());
+  const [propertyId, setPropertyId] = useState(properties[0]?.id || "");
+  const [loyerHC, setLoyerHC] = useState("");
+  const [provisions, setProvisions] = useState("");
+  const [capital, setCapital] = useState("");
+  const [interets, setInterets] = useState("");
+  const [assurance, setAssurance] = useState("");
+  const [chargeCategorie, setChargeCategorie] = useState(CHARGE_CATEGORIES[0]);
+  const [chargeMontant, setChargeMontant] = useState("");
+  const [chargeLibelle, setChargeLibelle] = useState("");
+
+  useEffect(() => { if (open) { setDate(today()); if (!propertyId && properties[0]) setPropertyId(properties[0].id); } }, [open]);
+
+  const num = (v) => Math.max(0, parseFloat(String(v).replace(",", ".")) || 0);
+  const loyerTotal = num(loyerHC) + num(provisions);
+  const mensualiteTotal = num(capital) + num(interets) + num(assurance);
+
+  function resetAll() { setLoyerHC(""); setProvisions(""); setCapital(""); setInterets(""); setAssurance(""); setChargeMontant(""); setChargeLibelle(""); }
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!propertyId) return;
+    const property = properties.find((p) => p.id === propertyId);
+    const groupId = uid();
+    const base = { date, propertyId, groupId };
+    let rows = [];
+    if (tab === "LOYER") {
+      if (num(loyerHC) > 0) rows.push({ ...base, categorie: CAT.LOYER_HC, libelle: `Loyer ${property?.name || ""}`.trim(), montant: num(loyerHC), typeOperation: "Recette" });
+      if (num(provisions) > 0) rows.push({ ...base, categorie: CAT.PROVISIONS, libelle: `Provisions charges ${property?.name || ""}`.trim(), montant: num(provisions), typeOperation: "Recette" });
+    }
+    if (tab === "EMPRUNT") {
+      if (num(interets) > 0) rows.push({ ...base, categorie: CAT.INTERETS, libelle: `Intérêts emprunt ${property?.name || ""}`.trim(), montant: num(interets), typeOperation: "Depense" });
+      if (num(assurance) > 0) rows.push({ ...base, categorie: CAT.ASSURANCE_EMPRUNT, libelle: `Assurance emprunteur ${property?.name || ""}`.trim(), montant: num(assurance), typeOperation: "Depense" });
+      if (num(capital) > 0) rows.push({ ...base, categorie: CAT.CAPITAL, libelle: `Capital amorti ${property?.name || ""}`.trim(), montant: num(capital), typeOperation: "Depense" });
+    }
+    if (tab === "CHARGE") {
+      if (num(chargeMontant) > 0) rows.push({ ...base, categorie: chargeCategorie, libelle: chargeLibelle.trim(), montant: num(chargeMontant), typeOperation: "Depense" });
+    }
+    if (rows.length === 0) return;
+    await onSubmitGroup(rows);
+    resetAll();
+    onClose();
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Nouvelle opération" wide>
+      <div className="mb-5 flex gap-2 rounded-lg bg-[#EAE7D9] p-1">
+        {OPERATION_TABS.map((t) => {
+          const Icon = t.icon; const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors ${active ? "bg-white text-[#20211D] shadow-sm" : "text-[#6B6858] hover:text-[#20211D]"}`}>
+              <Icon size={15} />{t.label}
+            </button>
+          );
+        })}
+      </div>
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={tab === "LOYER" ? "Date du virement" : tab === "EMPRUNT" ? "Date du prélèvement" : "Date"}>
+            <input type="date" className={inputClasses} value={date} onChange={(e) => setDate(e.target.value)} required />
+          </Field>
+          <Field label="Propriété concernée">
+            <select className={inputClasses} value={propertyId} onChange={(e) => setPropertyId(e.target.value)} required>
+              {properties.length === 0 && <option value="">Ajoute un bien d'abord</option>}
+              {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        {tab === "LOYER" && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Loyer Hors Charges (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={loyerHC} onChange={(e) => setLoyerHC(e.target.value)} placeholder="550" /></Field>
+              <Field label="Provisions sur charges (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={provisions} onChange={(e) => setProvisions(e.target.value)} placeholder="50" /></Field>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
+              <span className="text-sm text-[#5B5849]">Total perçu</span>
+              <span className="font-mono text-lg tabular-nums text-[#20211D]">{formatCurrency(loyerTotal)}</span>
+            </div>
+          </>
+        )}
+
+        {tab === "EMPRUNT" && (
+          <>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Capital amorti (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={capital} onChange={(e) => setCapital(e.target.value)} placeholder="320" /></Field>
+              <Field label="Intérêts d'emprunt (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={interets} onChange={(e) => setInterets(e.target.value)} placeholder="180" /></Field>
+              <Field label="Assurance emprunteur (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={assurance} onChange={(e) => setAssurance(e.target.value)} placeholder="25" /></Field>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
+              <span className="text-sm text-[#5B5849]">Mensualité totale</span>
+              <span className="font-mono text-lg tabular-nums text-[#20211D]">{formatCurrency(mensualiteTotal)}</span>
+            </div>
+            <p className="text-xs text-[#8A876F]">Le capital amorti est suivi en trésorerie mais exclu des charges déductibles.</p>
+          </>
+        )}
+
+        {tab === "CHARGE" && (
+          <>
+            <Field label="Catégorie fiscale">
+              <select className={inputClasses} value={chargeCategorie} onChange={(e) => setChargeCategorie(e.target.value)}>
+                {CHARGE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Montant (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargeMontant} onChange={(e) => setChargeMontant(e.target.value)} placeholder="120" /></Field>
+              <Field label="Libellé (optionnel)"><input className={inputClasses} value={chargeLibelle} onChange={(e) => setChargeLibelle(e.target.value)} placeholder="Ex. Ravalement façade" /></Field>
+            </div>
+          </>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Annuler</button>
+          <button type="submit" disabled={!propertyId} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">Enregistrer</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/* ============================================================================
+ * APPLICATION PRINCIPALE
+ * ==========================================================================*/
+function RealEstateLedger({ onSignOut, showSignOut }) {
+  const store = useLedgerStore();
+  const { properties, transactions } = store;
+  const [selectedPropertyId, setSelectedPropertyId] = useState("ALL");
+  const [yearFilter, setYearFilter] = useState("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [formOpen, setFormOpen] = useState(false);
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
+
+  const propertiesById = useMemo(() => Object.fromEntries(properties.map((p) => [p.id, p])), [properties]);
+  const years = useMemo(() => Array.from(new Set(transactions.map((t) => t.date.slice(0, 4)))).sort().reverse(), [transactions]);
+  const allCategories = useMemo(() => Object.values(CAT), []);
+
+  const filtered = useMemo(() => transactions
+    .filter((t) => selectedPropertyId === "ALL" || t.propertyId === selectedPropertyId)
+    .filter((t) => yearFilter === "ALL" || t.date.startsWith(yearFilter))
+    .filter((t) => categoryFilter === "ALL" || t.categorie === categoryFilter)
+    .sort((a, b) => (a.date < b.date ? 1 : -1)), [transactions, selectedPropertyId, yearFilter, categoryFilter]);
+
+  const kpis = useMemo(() => {
+    let totalLoyers = 0, totalCharges = 0, net = 0;
+    for (const t of filtered) {
+      const signed = t.typeOperation === "Recette" ? t.montant : -t.montant;
+      net += signed;
+      if (t.typeOperation === "Recette") totalLoyers += t.montant;
+      else if (!NON_DEDUCTIBLE.has(t.categorie)) totalCharges += t.montant;
+    }
+    return { totalLoyers, totalCharges, net };
+  }, [filtered]);
+
+  async function handleSubmitGroup(rows) { await store.addTransactions(rows); }
+  async function handleDeleteRow(t) {
+    if (t.groupId) {
+      const sameGroup = transactions.filter((x) => x.groupId === t.groupId);
+      if (sameGroup.length > 1) {
+        const ok = window.confirm("Cette ligne fait partie d'une saisie groupée. Supprimer toutes les lignes liées ?");
+        if (ok) { await store.deleteTransactionGroup(t.groupId); return; }
+      }
+    }
+    await store.deleteTransaction(t.id);
+  }
+  function handleExport() {
+    const csv = buildCSV(filtered, propertiesById);
+    const suffix = yearFilter === "ALL" ? "toutes-annees" : yearFilter;
+    downloadCSV(csv, `registre-locatif-${suffix}.csv`);
+  }
+
+  return (
+    <div className="min-h-screen bg-[#EDEBDF] text-[#20211D]">
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-[#20211D]">Registre locatif</h1>
+            <p className="text-sm text-[#6B6858]">Saisie des loyers, emprunts et charges — export prêt pour Qlower.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setPropertiesOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]"><Settings size={15} />Mes biens</button>
+            <button onClick={handleExport} className="flex items-center gap-1.5 rounded-lg border border-[#20211D] bg-[#20211D] px-3 py-2 text-sm font-medium text-[#F7F5EC] hover:bg-[#3A3B33]"><Download size={15} />Exporter en CSV</button>
+            {showSignOut && <button onClick={onSignOut} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Se déconnecter"><LogOut size={15} /></button>}
+          </div>
+        </div>
+
+        <div className="mb-5 flex flex-wrap gap-2">
+          <button onClick={() => setSelectedPropertyId("ALL")} className={`rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${selectedPropertyId === "ALL" ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>Toutes mes propriétés</button>
+          {properties.map((p) => {
+            const accent = REGIME_ACCENT[p.regime]; const active = selectedPropertyId === p.id;
+            return (
+              <button key={p.id} onClick={() => setSelectedPropertyId(p.id)} className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${active ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>
+                <Building2 size={13} className={active ? "text-[#F7F5EC]" : accent.text} />{p.name}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mb-6 flex flex-wrap gap-3">
+          <KPICard label="Total loyers enregistrés" value={kpis.totalLoyers} tone="positive" icon={ArrowUpRight} />
+          <KPICard label="Total charges déductibles" value={kpis.totalCharges} tone="negative" icon={ArrowDownRight} />
+          <KPICard label="Net de trésorerie" value={kpis.net} tone={kpis.net >= 0 ? "positive" : "negative"} icon={Wallet} />
+        </div>
+
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <button onClick={() => setFormOpen(true)} disabled={properties.length === 0} className="flex items-center gap-1.5 rounded-lg bg-[#9A5B34] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40"><Plus size={16} />Nouvelle opération</button>
+          <div className="flex flex-wrap gap-2">
+            <select className="rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849]" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+              <option value="ALL">Toutes les années</option>
+              {years.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <select className="rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849]" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+              <option value="ALL">Toutes les catégories</option>
+              {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {properties.length === 0 && (
+          <div className="mb-4 rounded-lg border border-[#DEDAC9] bg-white px-4 py-3 text-sm text-[#6B6858]">Ajoute un premier bien dans « Mes biens » pour commencer à saisir des opérations.</div>
+        )}
+
+        <div className="overflow-hidden rounded-xl border border-[#DEDAC9] bg-white">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#DEDAC9] bg-[#F7F5EC] text-left text-[#6B6858]">
+                <th className="px-4 py-3 font-medium">Date</th>
+                <th className="px-4 py-3 font-medium">Bien</th>
+                <th className="px-4 py-3 font-medium">Catégorie fiscale</th>
+                <th className="px-4 py-3 font-medium">Libellé</th>
+                <th className="px-4 py-3 text-right font-medium">Montant</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-[#8A876F]">Aucune opération pour ces filtres.</td></tr>}
+              {filtered.map((t) => {
+                const property = propertiesById[t.propertyId]; const isRecette = t.typeOperation === "Recette";
+                return (
+                  <tr key={t.id} className="border-b border-[#EFEDE0] last:border-0 hover:bg-[#FAF9F2]">
+                    <td className="whitespace-nowrap px-4 py-3 text-[#20211D]">{formatDateForDisplay(t.date)}</td>
+                    <td className="px-4 py-3 text-[#20211D]">{property?.name || "—"}</td>
+                    <td className="px-4 py-3 text-[#5B5849]">{t.categorie}</td>
+                    <td className="px-4 py-3 text-[#5B5849]">{t.libelle || "—"}</td>
+                    <td className={`whitespace-nowrap px-4 py-3 text-right font-mono tabular-nums ${isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>{isRecette ? "+" : "−"} {formatCurrency(t.montant)}</td>
+                    <td className="px-4 py-3 text-right"><button onClick={() => handleDeleteRow(t)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {!FIREBASE_ENABLED && <p className="mt-4 text-xs text-[#8A876F]">Mode local : les données sont stockées dans ce navigateur (localStorage). Renseigne FIREBASE_CONFIG en haut du fichier pour passer sur Firestore.</p>}
+      </div>
+
+      <PropertyManagerModal open={propertiesOpen} onClose={() => setPropertiesOpen(false)} properties={properties} onAdd={store.addProperty} onUpdate={store.updateProperty} onDelete={store.deleteProperty} />
+      <OperationFormModal open={formOpen} onClose={() => setFormOpen(false)} properties={properties} onSubmitGroup={handleSubmitGroup} />
+    </div>
+  );
+}
+
+/* ============================================================================
+ * ÉCRAN DE CONNEXION
+ * ==========================================================================*/
+function GoogleG({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.1 29.6 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.5 0 10.4-2.1 14.1-5.5l-6.5-5.5c-2 1.5-4.6 2.4-7.6 2.4-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.6 39.6 16.3 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.2-4.1 5.6l6.5 5.5C41.3 36.5 44 30.9 44 24c0-1.3-.1-2.7-.4-3.5z"/>
+    </svg>
+  );
+}
+
+function LoginScreen() {
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleGoogleSignIn() {
+    setError(""); setLoading(true);
+    try {
+      const api = await getAuthApi();
+      await api.signInWithPopup(api.auth, new api.GoogleAuthProvider());
+    } catch (err) {
+      setError("Connexion refusée ou annulée. Vérifie que ton adresse Google est bien autorisée.");
+    } finally { setLoading(false); }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#EDEBDF] px-4">
+      <div className="w-full max-w-sm rounded-2xl border border-[#DEDAC9] bg-white p-7 text-center">
+        <div className="mb-5 flex items-center justify-center gap-2 text-[#20211D]"><Lock size={18} /><h1 className="text-lg font-semibold">Registre locatif</h1></div>
+        <p className="mb-5 text-sm text-[#6B6858]">Connexion requise pour accéder à tes données.</p>
+        {error && <p className="mb-3 text-sm text-[#A2432A]">{error}</p>}
+        <button onClick={handleGoogleSignIn} disabled={loading}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#D6D2C0] bg-white px-4 py-2.5 text-sm font-medium text-[#20211D] hover:bg-[#F7F5EC] disabled:opacity-40">
+          <GoogleG size={18} />{loading ? "Connexion…" : "Se connecter avec Google"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================
+ * RACINE
+ * ==========================================================================*/
+function App() {
+  const [authChecked, setAuthChecked] = useState(!FIREBASE_ENABLED);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    if (!FIREBASE_ENABLED) return;
+    let unsub = () => {};
+    (async () => {
+      const api = await getAuthApi();
+      unsub = api.onAuthStateChanged(api.auth, (u) => { setUser(u); setAuthChecked(true); });
+    })();
+    return () => unsub();
+  }, []);
+
+  async function handleSignOut() { const api = await getAuthApi(); await api.signOut(api.auth); }
+
+  if (!authChecked) return <div className="flex min-h-screen items-center justify-center bg-[#EDEBDF] text-[#6B6858]">Chargement…</div>;
+  if (FIREBASE_ENABLED && !user) return <LoginScreen />;
+  return <RealEstateLedger onSignOut={handleSignOut} showSignOut={FIREBASE_ENABLED} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
