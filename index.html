@@ -19,7 +19,7 @@
 <div id="root"></div>
 
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useMemo, useCallback } = React;
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
 /* ============================================================================
  * CONFIGURATION FIREBASE — à compléter avec ton projet
@@ -69,6 +69,11 @@ async function getAuthApi() {
   return authApi;
 }
 
+/* Pas de Firebase Storage ici : ça nécessite le forfait payant "Blaze".
+ * Les justificatifs sont donc stockés directement dans Firestore, encodés en base64
+ * (voir addDocument) — ça fonctionne avec le forfait gratuit "Spark", au prix d'une
+ * limite de taille par fichier (~700 Ko, cf. DOCUMENT_MAX_SIZE plus bas). */
+
 /* ============================================================================
  * ICÔNES (SVG inline, style Lucide — licence ISC, aucune dépendance npm)
  * ==========================================================================*/
@@ -99,6 +104,8 @@ const Lock = (p) => <IconBase {...p}><rect width="18" height="11" x="3" y="11" r
 const Users = (p) => <IconBase {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></IconBase>;
 const Calculator = (p) => <IconBase {...p}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></IconBase>;
 const Upload = (p) => <IconBase {...p}><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></IconBase>;
+const FileText = (p) => <IconBase {...p}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></IconBase>;
+const ShieldCheck = (p) => <IconBase {...p}><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></IconBase>;
 
 /* ============================================================================
  * RÉFÉRENTIEL FISCAL
@@ -585,6 +592,144 @@ function parseLoanSchedule(text) {
 }
 
 /* ============================================================================
+ * ÉCHÉANCIERS D'ASSURANCE EMPRUNTEUR PRÉ-REMPLIS (cotisations mensuelles cumulées
+ * de tous les co-emprunteurs assurés sur le prêt). Format par ligne : AAAA-MM;Montant
+ * ==========================================================================*/
+const ASSURANCE_SCHEDULE_PRESETS = {
+  "Tripode": `2025-10;165.45
+2025-11;37.65
+2025-12;37.65
+2026-01;37.65
+2026-02;37.65
+2026-03;37.65
+2026-04;37.65
+2026-05;37.65
+2026-06;37.65
+2026-07;37.65
+2026-08;37.65
+2026-09;38.21
+2026-10;27.66
+2026-11;17.96
+2026-12;17.96
+2027-01;17.96
+2027-02;17.96
+2027-03;17.96
+2027-04;17.96
+2027-05;17.96
+2027-06;17.96
+2027-07;17.96
+2027-08;17.96
+2027-09;18.65
+2027-10;26.75
+2027-11;17.27
+2027-12;17.27
+2028-01;17.27
+2028-02;17.27
+2028-03;17.27
+2028-04;17.27
+2028-05;17.27
+2028-06;17.27
+2028-07;17.27
+2028-08;17.27
+2028-09;17.89
+2028-10;25.80
+2028-11;16.37
+2028-12;16.37
+2029-01;16.37
+2029-02;16.37
+2029-03;16.37
+2029-04;16.37
+2029-05;16.37
+2029-06;16.37
+2029-07;16.37
+2029-08;16.37
+2029-09;16.96
+2029-10;24.70
+2029-11;15.18
+2029-12;15.18
+2030-01;15.18
+2030-02;15.18
+2030-03;15.18
+2030-04;15.18
+2030-05;15.18
+2030-06;15.18
+2030-07;15.18
+2030-08;15.18
+2030-09;15.78
+2030-10;22.35
+2030-11;12.75
+2030-12;12.75
+2031-01;12.75
+2031-02;12.75
+2031-03;12.75
+2031-04;12.75
+2031-05;12.75
+2031-06;12.75
+2031-07;12.75
+2031-08;12.75
+2031-09;13.23
+2031-10;19.92
+2031-11;10.27
+2031-12;10.27
+2032-01;10.27
+2032-02;10.27
+2032-03;10.27
+2032-04;10.27
+2032-05;10.27
+2032-06;10.27
+2032-07;10.27
+2032-08;10.27
+2032-09;10.63
+2032-10;17.47
+2032-11;7.74
+2032-12;7.74
+2033-01;7.74
+2033-02;7.74
+2033-03;7.74
+2033-04;7.74
+2033-05;7.74
+2033-06;7.74
+2033-07;7.74
+2033-08;7.74
+2033-09;7.99
+2033-10;15.06
+2033-11;5.24
+2033-12;5.24
+2034-01;5.24
+2034-02;5.24
+2034-03;5.24
+2034-04;5.24
+2034-05;5.24
+2034-06;5.24
+2034-07;5.24
+2034-08;5.24
+2034-09;5.42
+2034-10;10.08
+2034-11;0.08
+2034-12;0.08
+2035-01;0.08
+2035-02;0.08
+2035-03;0.08
+2035-04;0.08
+2035-05;0.08
+2035-06;0.08
+2035-07;0.08
+2035-08;0.08
+2035-09;0.08
+2035-10;10.00
+2035-11;0.01
+2035-12;0.01
+2036-01;0.01`,
+};
+function parseInsuranceSchedule(text) {
+  return text.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
+    const parts = line.split(/[;,\t]/).map((s) => s.trim());
+    const [month, montant] = parts;
+    return { month, montant: parseFloat(String(montant).replace(",", ".")) || 0 };
+  }).filter((r) => /^\d{4}-\d{2}$/.test(r.month));
+}
+
+/* ============================================================================
  * UTILITAIRES
  * ==========================================================================*/
 const CSV_SEPARATOR = ";";
@@ -643,11 +788,12 @@ function useLedgerStore() {
   const [tenants, setTenants] = useState(() => readLocal("rel_tenants", []));
   const [transactions, setTransactions] = useState(() => readLocal("rel_transactions", []));
   const [regularisations, setRegularisations] = useState(() => readLocal("rel_regularisations", []));
+  const [documents, setDocuments] = useState(() => readLocal("rel_documents", []));
   const [ready, setReady] = useState(!FIREBASE_ENABLED);
 
   useEffect(() => {
     if (!FIREBASE_ENABLED) return;
-    let unsubProps = () => {}; let unsubTenants = () => {}; let unsubTx = () => {}; let unsubRegul = () => {};
+    let unsubProps = () => {}; let unsubTenants = () => {}; let unsubTx = () => {}; let unsubRegul = () => {}; let unsubDocs = () => {};
     (async () => {
       const api = await getFirestoreApi();
       const propsQuery = api.query(api.collection(api.db, "properties"));
@@ -658,15 +804,23 @@ function useLedgerStore() {
       unsubTx = api.onSnapshot(txQuery, (snap) => setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
       const regulQuery = api.query(api.collection(api.db, "regularisations"));
       unsubRegul = api.onSnapshot(regulQuery, (snap) => setRegularisations(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+      const docsQuery = api.query(api.collection(api.db, "documents"));
+      unsubDocs = api.onSnapshot(docsQuery, (snap) => setDocuments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
       setReady(true);
     })();
-    return () => { unsubProps(); unsubTenants(); unsubTx(); unsubRegul(); };
+    return () => { unsubProps(); unsubTenants(); unsubTx(); unsubRegul(); unsubDocs(); };
   }, []);
 
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_properties", JSON.stringify(properties)); }, [properties]);
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_tenants", JSON.stringify(tenants)); }, [tenants]);
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_transactions", JSON.stringify(transactions)); }, [transactions]);
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_regularisations", JSON.stringify(regularisations)); }, [regularisations]);
+  useEffect(() => {
+    if (!FIREBASE_ENABLED) {
+      try { window.localStorage.setItem("rel_documents", JSON.stringify(documents)); }
+      catch { /* quota dépassé (fichiers en base64) : on ignore silencieusement */ }
+    }
+  }, [documents]);
 
   const addProperty = useCallback(async (property) => {
     if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.addDoc(api.collection(api.db, "properties"), property); }
@@ -696,6 +850,10 @@ function useLedgerStore() {
     if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await Promise.all(list.map((t) => api.addDoc(api.collection(api.db, "transactions"), t))); }
     else setTransactions((prev) => [...list.map((t) => ({ id: uid(), ...t })), ...prev]);
   }, []);
+  const updateTransaction = useCallback(async (id, patch) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.updateDoc(api.doc(api.db, "transactions", id), patch); }
+    else setTransactions((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  }, []);
   const deleteTransaction = useCallback(async (id) => {
     if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.deleteDoc(api.doc(api.db, "transactions", id)); }
     else setTransactions((prev) => prev.filter((t) => t.id !== id));
@@ -712,8 +870,34 @@ function useLedgerStore() {
     if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.deleteDoc(api.doc(api.db, "regularisations", id)); }
     else setRegularisations((prev) => prev.filter((r) => r.id !== id));
   }, []);
+  const addDocument = useCallback(async (file, meta) => {
+    if (file.size > DOCUMENT_MAX_SIZE) {
+      throw new Error(`Fichier trop volumineux (${(file.size / 1024).toFixed(0)} Ko). Limite : ${(DOCUMENT_MAX_SIZE / 1024).toFixed(0)} Ko (stockage directement dans Firestore, forfait gratuit).`);
+    }
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const base = {
+      fileName: file.name,
+      categorie: meta.categorie || "",
+      year: meta.year || "",
+      propertyId: meta.propertyId || "",
+      size: file.size,
+      uploadedAt: new Date().toISOString(),
+      dataUrl,
+    };
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.addDoc(api.collection(api.db, "documents"), base); }
+    else setDocuments((prev) => [...prev, { id: uid(), ...base }]);
+  }, []);
+  const deleteDocument = useCallback(async (docItem) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.deleteDoc(api.doc(api.db, "documents", docItem.id)); }
+    else setDocuments((prev) => prev.filter((d) => d.id !== docItem.id));
+  }, []);
 
-  return { ready, properties, tenants, transactions, regularisations, addProperty, updateProperty, deleteProperty, addTenant, updateTenant, deleteTenant, addTransactions, deleteTransaction, deleteTransactionGroup, addRegularisation, deleteRegularisation };
+  return { ready, properties, tenants, transactions, regularisations, documents, addProperty, updateProperty, deleteProperty, addTenant, updateTenant, deleteTenant, addTransactions, updateTransaction, deleteTransaction, deleteTransactionGroup, addRegularisation, deleteRegularisation, addDocument, deleteDocument };
 }
 
 /* ============================================================================
@@ -1016,6 +1200,248 @@ function ImportLoanModal({ open, onClose, properties, transactions, onImport }) 
       <div className="mt-4 flex justify-end gap-2">
         <button type="button" onClick={onClose} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Fermer</button>
         <button type="button" onClick={handleImport} disabled={!propertyId || parsed.length === 0} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">Importer {parsed.length > 0 ? `(${parsed.length})` : ""}</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================================
+ * IMPORT & RÉPARTITION D'UNE ASSURANCE EMPRUNTEUR (co-emprunteurs)
+ * Additionne les cotisations de plusieurs échéanciers d'assurance et vient
+ * compléter automatiquement le montant "Assurance emprunteur" dans les saisies
+ * d'emprunt déjà existantes (Capital + Intérêts), en les retrouvant par mois/année.
+ * ==========================================================================*/
+function ImportInsuranceModal({ open, onClose, properties, transactions, onAddTransactions, onUpdateTransaction }) {
+  const [propertyId, setPropertyId] = useState("");
+  const [scheduleText, setScheduleText] = useState("");
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) { setResult(null); return; }
+    const withPreset = properties.find((p) => ASSURANCE_SCHEDULE_PRESETS[p.name]);
+    setPropertyId(withPreset?.id || properties[0]?.id || "");
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!open) return;
+    const property = properties.find((p) => p.id === propertyId);
+    const preset = property ? ASSURANCE_SCHEDULE_PRESETS[property.name] : null;
+    setScheduleText(preset || "");
+    setResult(null);
+  }, [open, propertyId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const parsed = useMemo(() => parseInsuranceSchedule(scheduleText), [scheduleText]);
+  const totalMontant = parsed.reduce((s, r) => s + r.montant, 0);
+
+  // Pour chaque mois de l'échéancier, retrouve le groupe d'écriture (Capital/Intérêts)
+  // déjà saisi pour ce bien à ce mois-là, et détermine s'il faut créer ou mettre à jour
+  // la ligne "Assurance emprunteur" de ce groupe.
+  const preview = useMemo(() => {
+    if (!propertyId) return [];
+    const loanRowsByMonth = new Map();
+    for (const t of transactions) {
+      if (t.propertyId !== propertyId) continue;
+      if (t.categorie !== CAT.CAPITAL && t.categorie !== CAT.INTERETS && t.categorie !== CAT.ASSURANCE_EMPRUNT) continue;
+      const month = t.date.slice(0, 7);
+      if (!loanRowsByMonth.has(month)) loanRowsByMonth.set(month, []);
+      loanRowsByMonth.get(month).push(t);
+    }
+    return parsed.map((r) => {
+      const rows = loanRowsByMonth.get(r.month) || [];
+      const groupRow = rows.find((t) => t.categorie === CAT.CAPITAL || t.categorie === CAT.INTERETS);
+      const existingAssurance = rows.find((t) => t.categorie === CAT.ASSURANCE_EMPRUNT);
+      let status = "non-trouve";
+      if (existingAssurance) status = "maj";
+      else if (groupRow) status = "creation";
+      return { ...r, groupRow, existingAssurance, status };
+    });
+  }, [parsed, propertyId, transactions]);
+
+  const counts = {
+    maj: preview.filter((r) => r.status === "maj").length,
+    creation: preview.filter((r) => r.status === "creation").length,
+    nonTrouve: preview.filter((r) => r.status === "non-trouve").length,
+  };
+
+  async function handleApply() {
+    const property = properties.find((p) => p.id === propertyId);
+    if (!property) return;
+    setBusy(true);
+    try {
+      const toCreate = [];
+      const toUpdate = [];
+      for (const r of preview) {
+        if (r.status === "maj") toUpdate.push({ id: r.existingAssurance.id, montant: r.montant });
+        else if (r.status === "creation") {
+          toCreate.push({
+            date: r.groupRow.date, propertyId, groupId: r.groupRow.groupId,
+            categorie: CAT.ASSURANCE_EMPRUNT, libelle: `Assurance emprunteur ${property.name}`,
+            montant: r.montant, typeOperation: "Depense",
+          });
+        }
+      }
+      if (toCreate.length > 0) await onAddTransactions(toCreate);
+      for (const u of toUpdate) await onUpdateTransaction(u.id, { montant: u.montant });
+      setResult({ maj: toUpdate.length, creation: toCreate.length });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Assurance emprunteur — importer et répartir" wide>
+      <Field label="Bien concerné">
+        <select className={inputClasses} value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+          {properties.length === 0 && <option value="">Ajoute un bien d'abord</option>}
+          {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </Field>
+      <p className="mt-2 text-xs text-[#8A876F]">Colle ici la somme des cotisations mensuelles de tous les co-emprunteurs assurés (une ligne par mois). Chaque montant viendra compléter automatiquement la saisie « Capital + Intérêts » déjà existante pour ce mois, ou sera ajouté si aucune ligne d'assurance n'existe encore.</p>
+      <Field label="Échéancier cumulé (une ligne par mois : AAAA-MM;Montant)">
+        <textarea
+          className={`${inputClasses} mt-1 h-48 font-mono text-xs`}
+          value={scheduleText}
+          onChange={(e) => setScheduleText(e.target.value)}
+          placeholder={"2026-01;37.65\n2026-02;37.65\n..."}
+        />
+      </Field>
+
+      <div className="mt-3 rounded-lg border border-[#DEDAC9] bg-white p-3 text-sm">
+        <p className="text-[#5B5849]">{parsed.length} mois reconnu(s) · Total cumulé : {formatCurrency(totalMontant)}</p>
+        <p className="mt-1 text-[#3F6B4F]">{counts.maj} saisie(s) existante(s) seront mises à jour · {counts.creation} ligne(s) « Assurance emprunteur » seront créées.</p>
+        {counts.nonTrouve > 0 && (
+          <p className="mt-1 text-[#A2432A]">{counts.nonTrouve} mois sans saisie d'emprunt correspondante pour ce bien (ex. avant le début de l'échéancier importé) — ignorés : {preview.filter((r) => r.status === "non-trouve").map((r) => r.month).join(", ")}</p>
+        )}
+      </div>
+
+      {result && (
+        <p className="mt-3 text-sm text-[#3F6B4F]">{result.maj} saisie(s) mise(s) à jour et {result.creation} ligne(s) créée(s) avec succès.</p>
+      )}
+
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Fermer</button>
+        <button type="button" onClick={handleApply} disabled={busy || !propertyId || (counts.maj + counts.creation === 0)} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">
+          {busy ? "Application..." : `Appliquer (${counts.maj + counts.creation})`}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================================
+ * JUSTIFICATIFS (documents justificatifs liés à une année / un type de dépense)
+ * ==========================================================================*/
+const DOCUMENT_CATEGORIES = [...Object.values(CAT)];
+// Les justificatifs sont stockés en base64 directement dans Firestore (pas de Firebase Storage,
+// qui nécessite le forfait payant "Blaze"). Un document Firestore est limité à ~1 Mo, et le
+// base64 gonfle la taille d'environ 37% : on se limite donc à 700 Ko par fichier d'origine.
+const DOCUMENT_MAX_SIZE = 700 * 1024;
+function DocumentsModal({ open, onClose, documents, properties, onAdd, onDelete }) {
+  const [file, setFile] = useState(null);
+  const [categorie, setCategorie] = useState(CAT.INTERETS);
+  const [year, setYear] = useState("");
+  const [propertyId, setPropertyId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [filterPropertyId, setFilterPropertyId] = useState("");
+  const fileInputRef = useRef(null);
+
+  async function handleUpload(e) {
+    e.preventDefault();
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    try {
+      await onAdd(file, { categorie, year: year.trim(), propertyId });
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (err) {
+      setError(err?.message || "Échec de l'envoi du justificatif.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete(doc) {
+    const ok = window.confirm(`Supprimer le justificatif « ${doc.fileName} » ?`);
+    if (!ok) return;
+    await onDelete(doc);
+  }
+
+  function openDocument(doc) {
+    if (doc.dataUrl) {
+      const a = document.createElement("a");
+      a.href = doc.dataUrl; a.download = doc.fileName; a.click();
+    }
+  }
+
+  const visible = documents
+    .filter((d) => !filterPropertyId || d.propertyId === filterPropertyId)
+    .slice()
+    .sort((a, b) => (b.uploadedAt || "").localeCompare(a.uploadedAt || ""));
+
+  return (
+    <Modal open={open} onClose={onClose} title="Justificatifs" wide>
+      <form onSubmit={handleUpload} className="grid grid-cols-1 gap-3 rounded-lg border border-[#DEDAC9] bg-white p-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <Field label="Fichier">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className={`${inputClasses} py-1.5`}
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+            />
+          </Field>
+          <p className="mt-1 text-xs text-[#8A876F]">Taille max. {(DOCUMENT_MAX_SIZE / 1024).toFixed(0)} Ko par fichier (stockage dans Firestore, sans Firebase Storage).</p>
+        </div>
+        <Field label="Type de dépense">
+          <select className={inputClasses} value={categorie} onChange={(e) => setCategorie(e.target.value)}>
+            {DOCUMENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
+        <Field label="Bien concerné (facultatif)">
+          <select className={inputClasses} value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+            <option value="">— Non lié —</option>
+            {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Année (facultatif)">
+          <input type="text" inputMode="numeric" placeholder="ex. 2026" className={inputClasses} value={year} onChange={(e) => setYear(e.target.value)} />
+        </Field>
+        <div className="flex items-end">
+          <button type="submit" disabled={!file || busy} className="w-full rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">
+            {busy ? "Envoi..." : "Ajouter le justificatif"}
+          </button>
+        </div>
+      </form>
+      {error && <p className="mt-2 text-sm text-[#A2432A]">{error}</p>}
+      {!FIREBASE_ENABLED && <p className="mt-2 text-xs text-[#8A876F]">Mode local : les fichiers sont stockés dans ce navigateur uniquement (non partagés entre appareils).</p>}
+
+      <div className="mt-4 flex items-center justify-between">
+        <h3 className="text-sm font-medium text-[#5B5849]">Documents enregistrés ({visible.length})</h3>
+        <select className={`${inputClasses} w-auto py-1.5 text-sm`} value={filterPropertyId} onChange={(e) => setFilterPropertyId(e.target.value)}>
+          <option value="">Tous les biens</option>
+          {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div>
+      <div className="mt-2 max-h-72 divide-y divide-[#EFEDE0] overflow-y-auto rounded-lg border border-[#DEDAC9] bg-white">
+        {visible.length === 0 && <p className="px-3 py-6 text-center text-sm text-[#8A876F]">Aucun justificatif enregistré.</p>}
+        {visible.map((d) => {
+          const property = properties.find((p) => p.id === d.propertyId);
+          return (
+            <div key={d.id} className="flex items-center justify-between gap-2 px-3 py-2">
+              <button type="button" onClick={() => openDocument(d)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                <FileText size={16} className="flex-shrink-0 text-[#6B6858]" />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm text-[#20211D]">{d.fileName}</span>
+                  <span className="block truncate text-xs text-[#8A876F]">{d.categorie}{d.year ? ` · ${d.year}` : ""}{property ? ` · ${property.name}` : ""}</span>
+                </span>
+              </button>
+              <button type="button" onClick={() => handleDelete(d)} className="flex-shrink-0 rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+            </div>
+          );
+        })}
       </div>
     </Modal>
   );
@@ -1374,6 +1800,8 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
   const [tenantsOpen, setTenantsOpen] = useState(false);
   const [regulOpen, setRegulOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [insuranceOpen, setInsuranceOpen] = useState(false);
+  const [documentsOpen, setDocumentsOpen] = useState(false);
 
   const propertiesById = useMemo(() => Object.fromEntries(properties.map((p) => [p.id, p])), [properties]);
   const tenantsById = useMemo(() => Object.fromEntries(tenants.map((t) => [t.id, t])), [tenants]);
@@ -1419,16 +1847,23 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
     }).sort((a, b) => (a.date < b.date ? 1 : -1));
   }, [filtered, viewMode, tenantsById]);
 
-  const kpis = useMemo(() => {
-    let totalLoyers = 0, totalCharges = 0, net = 0;
-    for (const t of filtered) {
-      const signed = t.typeOperation === "Recette" ? t.montant : -t.montant;
-      net += signed;
-      if (t.typeOperation === "Recette") totalLoyers += t.montant;
-      else if (!NON_DEDUCTIBLE.has(t.categorie)) totalCharges += t.montant;
-    }
-    return { totalLoyers, totalCharges, net };
-  }, [filtered]);
+  // Filtré par bien + année uniquement (indépendant du filtre "type de saisie" de la liste ci-dessous),
+  // pour donner une vue d'ensemble de ce qui est déjà saisi vs. ce qu'il reste à saisir.
+  const yearPropertyFiltered = useMemo(() => transactions
+    .filter((t) => selectedPropertyId === "ALL" || t.propertyId === selectedPropertyId)
+    .filter((t) => yearFilter === "ALL" || t.date.startsWith(yearFilter)), [transactions, selectedPropertyId, yearFilter]);
+
+  const categoryBreakdown = useMemo(() => allCategories.map((cat) => {
+    const rows = yearPropertyFiltered.filter((t) => t.categorie === cat);
+    const total = rows.reduce((s, t) => s + t.montant, 0);
+    return { categorie: cat, count: rows.length, total, isRecette: RECETTE_CATS.has(cat) };
+  }), [yearPropertyFiltered, allCategories]);
+
+  const breakdownNet = useMemo(() => {
+    let net = 0;
+    for (const t of yearPropertyFiltered) net += t.typeOperation === "Recette" ? t.montant : -t.montant;
+    return net;
+  }, [yearPropertyFiltered]);
 
   async function handleSubmitGroup(rows, oldGroupId) {
     if (oldGroupId) await store.deleteTransactionGroup(oldGroupId);
@@ -1481,6 +1916,8 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
             <button onClick={() => setTenantsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Locataires"><Users size={15} /><span className="hidden sm:inline">Locataires</span></button>
             <button onClick={() => setRegulOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Régularisation de charges"><Calculator size={15} /><span className="hidden sm:inline">Régul. charges</span></button>
             <button onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Importer un échéancier de prêt"><Upload size={15} /><span className="hidden sm:inline">Importer emprunt</span></button>
+            <button onClick={() => setInsuranceOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Assurance emprunteur"><ShieldCheck size={15} /><span className="hidden sm:inline">Assurance prêt</span></button>
+            <button onClick={() => setDocumentsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Justificatifs"><FileText size={15} /><span className="hidden sm:inline">Justificatifs</span></button>
             <button onClick={handleExport} className="flex items-center gap-1.5 rounded-lg border border-[#20211D] bg-[#20211D] px-2.5 py-2 text-sm font-medium text-[#F7F5EC] shadow-sm hover:bg-[#3A3B33]" aria-label="Exporter en CSV"><Download size={15} /><span className="hidden sm:inline">Exporter en CSV</span></button>
             {showSignOut && <button onClick={onSignOut} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Se déconnecter"><LogOut size={15} /></button>}
           </div>
@@ -1509,10 +1946,36 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
           </div>
         </div>
 
-        <div className="mb-6 flex flex-wrap gap-3">
-          <KPICard label="Total loyers enregistrés" value={kpis.totalLoyers} tone="positive" icon={ArrowUpRight} />
-          <KPICard label="Total charges déductibles" value={kpis.totalCharges} tone="negative" icon={ArrowDownRight} />
-          <KPICard label="Net de trésorerie" value={kpis.net} tone={kpis.net >= 0 ? "positive" : "negative"} icon={Wallet} />
+        <div className="mb-6 overflow-hidden rounded-2xl border border-[#DEDAC9] bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#DEDAC9] bg-[#F7F5EC] text-left text-[#6B6858]">
+                  <th className="px-4 py-2.5 font-medium">Type de saisie</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Nb saisies</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Montant total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categoryBreakdown.map((c) => (
+                  <tr key={c.categorie} className={`border-b border-[#EFEDE0] last:border-0 ${c.count === 0 ? "text-[#B4B19E]" : ""}`}>
+                    <td className="px-4 py-2 text-[#20211D]">{c.categorie}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right font-mono tabular-nums text-[#5B5849]">{c.count}</td>
+                    <td className={`whitespace-nowrap px-4 py-2 text-right font-mono tabular-nums ${c.count === 0 ? "text-[#B4B19E]" : c.isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>
+                      {c.count === 0 ? "—" : formatCurrency(c.total)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-[#DEDAC9] bg-[#F7F5EC] font-medium">
+                  <td className="px-4 py-2.5 text-[#20211D]">Net de trésorerie</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right text-[#6B6858]">{categoryBreakdown.reduce((s, c) => s + c.count, 0)}</td>
+                  <td className={`whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums ${breakdownNet >= 0 ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>{formatCurrency(breakdownNet)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -1618,6 +2081,22 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         properties={properties}
         transactions={transactions}
         onImport={store.addTransactions}
+      />
+      <ImportInsuranceModal
+        open={insuranceOpen}
+        onClose={() => setInsuranceOpen(false)}
+        properties={properties}
+        transactions={transactions}
+        onAddTransactions={store.addTransactions}
+        onUpdateTransaction={store.updateTransaction}
+      />
+      <DocumentsModal
+        open={documentsOpen}
+        onClose={() => setDocumentsOpen(false)}
+        documents={store.documents}
+        properties={properties}
+        onAdd={store.addDocument}
+        onDelete={store.deleteDocument}
       />
       <ChargeRegulModal
         open={regulOpen}
