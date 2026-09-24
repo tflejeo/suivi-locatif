@@ -96,6 +96,7 @@ const LogOut = (p) => <IconBase {...p}><path d="m16 17 5-5-5-5"/><path d="M21 12
 const Copy = (p) => <IconBase {...p}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></IconBase>;
 const Lock = (p) => <IconBase {...p}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></IconBase>;
 const Users = (p) => <IconBase {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></IconBase>;
+const Calculator = (p) => <IconBase {...p}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></IconBase>;
 
 /* ============================================================================
  * RÉFÉRENTIEL FISCAL
@@ -139,6 +140,13 @@ function findActiveTenant(tenants, propertyId, date) {
   if (candidates.length === 0) return null;
   return candidates.sort((a, b) => (a.leaseStart < b.leaseStart ? 1 : -1))[0];
 }
+function daysBetweenInclusive(isoStart, isoEnd) {
+  const d1 = new Date(isoStart + "T00:00:00Z");
+  const d2 = new Date(isoEnd + "T00:00:00Z");
+  return Math.round((d2 - d1) / 86400000) + 1;
+}
+function maxISO(a, b) { return a > b ? a : b; }
+function minISO(a, b) { return a < b ? a : b; }
 
 /* ============================================================================
  * UTILITAIRES
@@ -455,6 +463,98 @@ function TenantManagerModal({ open, onClose, tenants, properties, transactions, 
 }
 
 /* ============================================================================
+ * RÉGULARISATION DE CHARGES ANNUELLES
+ * ==========================================================================*/
+function ChargeRegulModal({ open, onClose, properties, tenants, transactions }) {
+  const [propertyId, setPropertyId] = useState(properties[0]?.id || "");
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [chargesReelles, setChargesReelles] = useState("");
+
+  useEffect(() => {
+    if (open && !propertyId && properties[0]) setPropertyId(properties[0].id);
+  }, [open, properties]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const num = (v) => Math.max(0, parseFloat(String(v).replace(",", ".")) || 0);
+
+  const result = useMemo(() => {
+    if (!propertyId || !periodStart || !periodEnd || periodEnd < periodStart) return null;
+    const totalDays = daysBetweenInclusive(periodStart, periodEnd);
+    const totalCharges = num(chargesReelles);
+    const tenantsForProperty = tenants.filter((t) => t.propertyId === propertyId);
+    const rows = [];
+    for (const t of tenantsForProperty) {
+      const tenantEnd = t.leaseEnd || periodEnd;
+      const overlapStart = maxISO(t.leaseStart, periodStart);
+      const overlapEnd = minISO(tenantEnd, periodEnd);
+      if (overlapStart > overlapEnd) continue; // pas de présence sur la période
+      const presenceDays = daysBetweenInclusive(overlapStart, overlapEnd);
+      const quotePart = totalDays > 0 ? (totalCharges * presenceDays) / totalDays : 0;
+      const provisionsPaid = transactions
+        .filter((x) => x.tenantId === t.id && x.categorie === CAT.PROVISIONS && x.date >= periodStart && x.date <= periodEnd)
+        .reduce((s, x) => s + x.montant, 0);
+      const solde = provisionsPaid - quotePart;
+      rows.push({ tenant: t, overlapStart, overlapEnd, presenceDays, quotePart, provisionsPaid, solde });
+    }
+    return { totalDays, totalCharges, rows };
+  }, [propertyId, periodStart, periodEnd, chargesReelles, tenants, transactions]);
+
+  return (
+    <Modal open={open} onClose={onClose} title="Régularisation de charges annuelles" wide>
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="col-span-2 sm:col-span-1">
+          <Field label="Bien">
+            <select className={inputClasses} value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+              {properties.length === 0 && <option value="">Ajoute un bien d'abord</option>}
+              {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>
+        </div>
+        <Field label="Début de période">
+          <input type="date" className={inputClasses} value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
+        </Field>
+        <Field label="Fin de période">
+          <input type="date" className={inputClasses} value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
+        </Field>
+        <Field label="Charges réelles (€)">
+          <input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesReelles} onChange={(e) => setChargesReelles(e.target.value)} placeholder="1200" />
+        </Field>
+      </div>
+
+      {!result && (
+        <p className="text-sm text-[#8A876F]">Renseigne le bien, la période et le montant des charges réelles pour calculer la régularisation.</p>
+      )}
+
+      {result && result.rows.length === 0 && (
+        <p className="text-sm text-[#8A876F]">Aucun locataire présent sur cette période pour ce bien.</p>
+      )}
+
+      {result && result.rows.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs text-[#8A876F]">Période : {result.totalDays} jour(s) · Charges réelles totales : {formatCurrency(result.totalCharges)}. La quote-part de chaque locataire est calculée au prorata de ses jours de présence sur la période.</p>
+          {result.rows.map((r) => (
+            <div key={r.tenant.id} className="rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[#20211D]">{r.tenant.name}</span>
+                <span className="text-xs text-[#8A876F]">{formatDateForDisplay(r.overlapStart)} → {formatDateForDisplay(r.overlapEnd)} ({r.presenceDays} j.)</span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+                <div><span className="text-[#8A876F]">Quote-part réelle</span><div className="font-mono tabular-nums text-[#20211D]">{formatCurrency(r.quotePart)}</div></div>
+                <div><span className="text-[#8A876F]">Provisions payées</span><div className="font-mono tabular-nums text-[#20211D]">{formatCurrency(r.provisionsPaid)}</div></div>
+                <div>
+                  <span className="text-[#8A876F]">{r.solde >= 0 ? "À rembourser au locataire" : "Complément à réclamer"}</span>
+                  <div className={`font-mono tabular-nums ${r.solde >= 0 ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>{formatCurrency(Math.abs(r.solde))}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/* ============================================================================
  * FORMULAIRE DE SAISIE
  * ==========================================================================*/
 const OPERATION_TABS = [
@@ -639,11 +739,12 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
   const [selectedPropertyId, setSelectedPropertyId] = useState("ALL");
   const [yearFilter, setYearFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
-  const [viewMode, setViewMode] = useState("DETAIL");
+  const [viewMode, setViewMode] = useState("SIMPLE");
   const [formOpen, setFormOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
   const [tenantsOpen, setTenantsOpen] = useState(false);
+  const [regulOpen, setRegulOpen] = useState(false);
 
   const propertiesById = useMemo(() => Object.fromEntries(properties.map((p) => [p.id, p])), [properties]);
   const tenantsById = useMemo(() => Object.fromEntries(tenants.map((t) => [t.id, t])), [tenants]);
@@ -745,9 +846,18 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
           <div className="flex items-center gap-2">
             <button onClick={() => setPropertiesOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]"><Settings size={15} />Mes biens</button>
             <button onClick={() => setTenantsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]"><Users size={15} />Locataires</button>
+            <button onClick={() => setRegulOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]"><Calculator size={15} />Régul. charges</button>
             <button onClick={handleExport} className="flex items-center gap-1.5 rounded-lg border border-[#20211D] bg-[#20211D] px-3 py-2 text-sm font-medium text-[#F7F5EC] hover:bg-[#3A3B33]"><Download size={15} />Exporter en CSV</button>
             {showSignOut && <button onClick={onSignOut} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Se déconnecter"><LogOut size={15} /></button>}
           </div>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#DEDAC9] bg-white/70 px-4 py-3">
+          <span className="text-sm font-medium text-[#5B5849]">Année</span>
+          <button onClick={() => setYearFilter("ALL")} className={`rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${yearFilter === "ALL" ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>Toutes</button>
+          {years.map((y) => (
+            <button key={y} onClick={() => setYearFilter(y)} className={`rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${yearFilter === y ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>{y}</button>
+          ))}
         </div>
 
         <div className="mb-5 flex flex-wrap gap-2">
@@ -775,10 +885,6 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
               <button onClick={() => setViewMode("SIMPLE")} className={`rounded-md px-3 py-1.5 transition-colors ${viewMode === "SIMPLE" ? "bg-white text-[#20211D] shadow-sm" : "text-[#6B6858]"}`}>Simplifiée</button>
               <button onClick={() => setViewMode("DETAIL")} className={`rounded-md px-3 py-1.5 transition-colors ${viewMode === "DETAIL" ? "bg-white text-[#20211D] shadow-sm" : "text-[#6B6858]"}`}>Détaillée</button>
             </div>
-            <select className="rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849]" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
-              <option value="ALL">Toutes les années</option>
-              {years.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
             <select className="rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849]" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
               <option value="ALL">Toutes les catégories</option>
               {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -871,6 +977,13 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         onAdd={store.addTenant}
         onUpdate={store.updateTenant}
         onDelete={store.deleteTenant}
+      />
+      <ChargeRegulModal
+        open={regulOpen}
+        onClose={() => setRegulOpen(false)}
+        properties={properties}
+        tenants={tenants}
+        transactions={transactions}
       />
       <OperationFormModal
         open={formOpen}
