@@ -420,14 +420,18 @@ function useLedgerStore() {
  * ATOMES D'INTERFACE
  * ==========================================================================*/
 function KPICard({ label, value, tone = "neutral", icon: Icon }) {
-  const toneClasses = { positive: "text-[#3F6B4F]", negative: "text-[#A2432A]", neutral: "text-[#20211D]" }[tone];
+  const toneMap = {
+    positive: { text: "text-[#3F6B4F]", chip: "bg-[#3F6B4F]/10 text-[#3F6B4F]" },
+    negative: { text: "text-[#A2432A]", chip: "bg-[#A2432A]/10 text-[#A2432A]" },
+    neutral: { text: "text-[#20211D]", chip: "bg-[#20211D]/10 text-[#20211D]" },
+  }[tone];
   return (
-    <div className="flex-1 min-w-[180px] rounded-xl border border-[#DEDAC9] bg-white/70 px-5 py-4">
-      <div className="flex items-center justify-between">
+    <div className="flex-1 min-w-[180px] rounded-2xl border border-[#DEDAC9] bg-white px-5 py-4 shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex items-center gap-3">
+        {Icon && <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${toneMap.chip}`}><Icon size={16} /></span>}
         <span className="text-sm text-[#6B6858]">{label}</span>
-        {Icon && <Icon size={16} className="text-[#9C987F]" />}
       </div>
-      <div className={`mt-2 font-mono text-2xl tabular-nums ${toneClasses}`}>{formatCurrency(value)}</div>
+      <div className={`mt-3 font-mono text-2xl font-semibold tabular-nums ${toneMap.text}`}>{formatCurrency(value)}</div>
     </div>
   );
 }
@@ -435,6 +439,20 @@ function Field({ label, children }) {
   return (<label className="block"><span className="mb-1 block text-sm text-[#5B5849]">{label}</span>{children}</label>);
 }
 const inputClasses = "w-full rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-[#20211D] outline-none focus:border-[#9A5B34] focus:ring-2 focus:ring-[#9A5B34]/20";
+function Toggle({ checked, onChange, label }) {
+  return (
+    <div className="flex items-center gap-2">
+      {label && <span className="text-sm text-[#5B5849]">{label}</span>}
+      <button
+        type="button" role="switch" aria-checked={checked} aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${checked ? "bg-[#9A5B34]" : "bg-[#D6D2C0]"}`}
+      >
+        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`} />
+      </button>
+    </div>
+  );
+}
 
 function Modal({ open, onClose, title, children, wide }) {
   if (!open) return null;
@@ -868,6 +886,7 @@ const OPERATION_TABS = [
   { id: "CHARGE", label: "Charge / Dépense", icon: Receipt },
 ];
 function today() { return new Date().toISOString().slice(0, 10); }
+function currentYearStr() { return String(new Date().getFullYear()); }
 
 function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup, editingGroup }) {
   const isEditing = editingGroup?.mode === "edit";
@@ -1042,7 +1061,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
   const store = useLedgerStore();
   const { properties, tenants, transactions } = store;
   const [selectedPropertyId, setSelectedPropertyId] = useState("ALL");
-  const [yearFilter, setYearFilter] = useState("ALL");
+  const [yearFilter, setYearFilter] = useState(currentYearStr());
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [viewMode, setViewMode] = useState("SIMPLE");
   const [formOpen, setFormOpen] = useState(false);
@@ -1054,7 +1073,11 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
 
   const propertiesById = useMemo(() => Object.fromEntries(properties.map((p) => [p.id, p])), [properties]);
   const tenantsById = useMemo(() => Object.fromEntries(tenants.map((t) => [t.id, t])), [tenants]);
-  const years = useMemo(() => Array.from(new Set(transactions.map((t) => t.date.slice(0, 4)))).sort().reverse(), [transactions]);
+  const years = useMemo(() => {
+    const set = new Set(transactions.map((t) => t.date.slice(0, 4)));
+    set.add(currentYearStr());
+    return Array.from(set).sort().reverse();
+  }, [transactions]);
   const allCategories = useMemo(() => Object.values(CAT), []);
 
   const filtered = useMemo(() => transactions
@@ -1143,40 +1166,43 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
 
   return (
     <div className="min-h-screen bg-[#EDEBDF] text-[#20211D]">
-      <div className="mx-auto max-w-6xl px-4 py-8">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-[#20211D]">Registre locatif</h1>
             <p className="text-sm text-[#6B6858]">Saisie des loyers, emprunts et charges — export prêt pour Qlower.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => setPropertiesOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Mes biens"><Settings size={15} /><span className="hidden sm:inline">Mes biens</span></button>
-            <button onClick={() => setTenantsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Locataires"><Users size={15} /><span className="hidden sm:inline">Locataires</span></button>
-            <button onClick={() => setRegulOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Régularisation de charges"><Calculator size={15} /><span className="hidden sm:inline">Régul. charges</span></button>
-            <button onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Importer un échéancier de prêt"><Upload size={15} /><span className="hidden sm:inline">Importer emprunt</span></button>
-            <button onClick={handleExport} className="flex items-center gap-1.5 rounded-lg border border-[#20211D] bg-[#20211D] px-2.5 py-2 text-sm font-medium text-[#F7F5EC] hover:bg-[#3A3B33]" aria-label="Exporter en CSV"><Download size={15} /><span className="hidden sm:inline">Exporter en CSV</span></button>
-            {showSignOut && <button onClick={onSignOut} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] hover:bg-[#F7F5EC]" aria-label="Se déconnecter"><LogOut size={15} /></button>}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button onClick={() => setPropertiesOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Mes biens"><Settings size={15} /><span className="hidden sm:inline">Mes biens</span></button>
+            <button onClick={() => setTenantsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Locataires"><Users size={15} /><span className="hidden sm:inline">Locataires</span></button>
+            <button onClick={() => setRegulOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Régularisation de charges"><Calculator size={15} /><span className="hidden sm:inline">Régul. charges</span></button>
+            <button onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Importer un échéancier de prêt"><Upload size={15} /><span className="hidden sm:inline">Importer emprunt</span></button>
+            <button onClick={handleExport} className="flex items-center gap-1.5 rounded-lg border border-[#20211D] bg-[#20211D] px-2.5 py-2 text-sm font-medium text-[#F7F5EC] shadow-sm hover:bg-[#3A3B33]" aria-label="Exporter en CSV"><Download size={15} /><span className="hidden sm:inline">Exporter en CSV</span></button>
+            {showSignOut && <button onClick={onSignOut} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Se déconnecter"><LogOut size={15} /></button>}
           </div>
         </div>
 
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#DEDAC9] bg-white/70 px-4 py-3">
-          <span className="text-sm font-medium text-[#5B5849]">Année</span>
-          <button onClick={() => setYearFilter("ALL")} className={`rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${yearFilter === "ALL" ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>Toutes</button>
-          {years.map((y) => (
-            <button key={y} onClick={() => setYearFilter(y)} className={`rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${yearFilter === y ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>{y}</button>
-          ))}
-        </div>
-
-        <div className="mb-5 flex flex-wrap gap-2">
-          <button onClick={() => setSelectedPropertyId("ALL")} className={`rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${selectedPropertyId === "ALL" ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>Toutes mes propriétés</button>
-          {properties.map((p) => {
-            const accent = REGIME_ACCENT[p.regime]; const active = selectedPropertyId === p.id;
-            return (
-              <button key={p.id} onClick={() => setSelectedPropertyId(p.id)} className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${active ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>
-                <Building2 size={13} className={active ? "text-[#F7F5EC]" : accent.text} />{p.name}
-              </button>
-            );
-          })}
+        <div className="mb-6 rounded-2xl border border-[#DEDAC9] bg-white/80 p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setSelectedPropertyId("ALL")} className={`rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${selectedPropertyId === "ALL" ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>Toutes mes propriétés</button>
+              {properties.map((p) => {
+                const accent = REGIME_ACCENT[p.regime]; const active = selectedPropertyId === p.id;
+                return (
+                  <button key={p.id} onClick={() => setSelectedPropertyId(p.id)} className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${active ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>
+                    <Building2 size={13} className={active ? "text-[#F7F5EC]" : accent.text} />{p.name}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-[#6B6858]">Année</span>
+              <select className="rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] shadow-sm" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+                <option value="ALL">Toutes les années</option>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          </div>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-3">
@@ -1186,13 +1212,10 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         </div>
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <button onClick={openNewForm} disabled={properties.length === 0} className="flex items-center gap-1.5 rounded-lg bg-[#9A5B34] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40"><Plus size={16} />Nouvelle opération</button>
-          <div className="flex flex-wrap gap-2">
-            <div className="flex rounded-lg bg-[#EAE7D9] p-1 text-sm">
-              <button onClick={() => setViewMode("SIMPLE")} className={`rounded-md px-3 py-1.5 transition-colors ${viewMode === "SIMPLE" ? "bg-white text-[#20211D] shadow-sm" : "text-[#6B6858]"}`}>Simplifiée</button>
-              <button onClick={() => setViewMode("DETAIL")} className={`rounded-md px-3 py-1.5 transition-colors ${viewMode === "DETAIL" ? "bg-white text-[#20211D] shadow-sm" : "text-[#6B6858]"}`}>Détaillée</button>
-            </div>
-            <select className="rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849]" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+          <button onClick={openNewForm} disabled={properties.length === 0} className="flex items-center gap-1.5 rounded-lg bg-[#9A5B34] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#84492A] disabled:opacity-40"><Plus size={16} />Nouvelle opération</button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Toggle checked={viewMode === "DETAIL"} onChange={(v) => setViewMode(v ? "DETAIL" : "SIMPLE")} label="Vue détaillée" />
+            <select className="rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] shadow-sm" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
               <option value="ALL">Toutes les catégories</option>
               {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -1204,29 +1227,29 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         )}
 
         {/* Vue mobile : cartes empilées */}
-        <div className="space-y-2 sm:hidden">
+        <div className="space-y-1.5 sm:hidden">
           {displayRows.length === 0 && (
-            <div className="rounded-xl border border-[#DEDAC9] bg-white px-4 py-10 text-center text-[#8A876F]">Aucune opération pour ces filtres.</div>
+            <div className="rounded-xl border border-[#DEDAC9] bg-white px-4 py-8 text-center text-sm text-[#8A876F]">Aucune opération pour ces filtres.</div>
           )}
           {displayRows.map((row) => {
             const property = propertiesById[row.propertyId];
             return (
-              <div key={row.key} className="rounded-xl border border-[#DEDAC9] bg-white px-4 py-3">
+              <div key={row.key} className="rounded-lg border border-[#DEDAC9] bg-white px-3 py-2 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-sm text-[#20211D]">{property?.name || "—"}</div>
-                    <div className="text-xs text-[#8A876F]">{formatDateForDisplay(row.date)}</div>
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-medium text-[#20211D]">{property?.name || "—"}</div>
+                    <div className="text-[11px] text-[#8A876F]">{formatDateForDisplay(row.date)}</div>
                   </div>
-                  <div className={`whitespace-nowrap font-mono text-base tabular-nums ${row.isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>
+                  <div className={`whitespace-nowrap font-mono text-sm tabular-nums ${row.isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>
                     {row.isRecette ? "+" : "−"} {formatCurrency(row.montant)}
                   </div>
                 </div>
-                <div className="mt-1 text-sm text-[#5B5849]">{row.title}</div>
-                {row.subtitle && <div className="text-xs text-[#8A876F]">{row.subtitle}</div>}
-                <div className="mt-2 flex justify-end gap-1">
-                  <button onClick={() => handleDuplicateRow(row.representative)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Dupliquer"><Copy size={15} /></button>
-                  <button onClick={() => handleEditRow(row.representative)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
-                  <button onClick={() => handleDeleteRow(row.representative)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                <div className="mt-0.5 text-xs text-[#5B5849]">{row.title}</div>
+                {row.subtitle && <div className="text-[11px] text-[#8A876F]">{row.subtitle}</div>}
+                <div className="mt-1 flex justify-end gap-0.5">
+                  <button onClick={() => handleDuplicateRow(row.representative)} className="rounded-md p-1 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Dupliquer"><Copy size={13} /></button>
+                  <button onClick={() => handleEditRow(row.representative)} className="rounded-md p-1 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={13} /></button>
+                  <button onClick={() => handleDeleteRow(row.representative)} className="rounded-md p-1 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={13} /></button>
                 </div>
               </div>
             );
@@ -1234,7 +1257,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         </div>
 
         {/* Vue bureau : tableau */}
-        <div className="hidden overflow-x-auto rounded-xl border border-[#DEDAC9] bg-white sm:block">
+        <div className="hidden overflow-x-auto rounded-2xl border border-[#DEDAC9] bg-white shadow-sm sm:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#DEDAC9] bg-[#F7F5EC] text-left text-[#6B6858]">
