@@ -1569,27 +1569,28 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
 
   const result = useMemo(() => {
     if (!propertyId || (!coproCalc && !teomCalc)) return null;
-    // Les provisions versées par le locataire ne sont pas itemisées par poste de charge : on les
-    // compare donc une seule fois, sur la période qui englobe les deux postes actifs, pour éviter
-    // de les compter deux fois si les deux périodes se chevauchent.
-    const starts = [coproCalc?.totalDays ? coproPeriodStart : null, teomCalc?.totalDays ? teomPeriodStart : null].filter(Boolean);
-    const ends = [coproCalc?.totalDays ? coproPeriodEnd : null, teomCalc?.totalDays ? teomPeriodEnd : null].filter(Boolean);
-    if (starts.length === 0) return null;
-    const unionStart = starts.reduce((a, b) => minISO(a, b));
-    const unionEnd = ends.reduce((a, b) => maxISO(a, b));
+    // Les provisions mensuelles versées par le locataire couvrent les charges de copropriété :
+    // elles sont donc comparées à la quote-part copro, sur la période de la copro (à défaut, sur
+    // celle du TEOM si seul ce poste est renseigné). Le TEOM n'est pas couvert par ces provisions :
+    // c'est un montant à facturer/déduire en plus, calculé sur sa propre période.
+    const provisionsPeriod = coproCalc
+      ? { start: coproPeriodStart, end: coproPeriodEnd }
+      : (teomCalc ? { start: teomPeriodStart, end: teomPeriodEnd } : null);
+    if (!provisionsPeriod) return null;
     const rows = [];
     for (const t of tenantsForProperty) {
       const coproEntry = coproCalc?.byTenant[t.id];
       const teomEntry = teomCalc?.byTenant[t.id];
       if (!coproEntry && !teomEntry) continue;
-      const quotePart = (coproEntry?.quotePart || 0) + (teomEntry?.quotePart || 0);
+      const coproQuotePart = coproEntry?.quotePart || 0;
+      const teomQuotePart = teomEntry?.quotePart || 0;
       const provisionsPaid = transactions
-        .filter((x) => x.tenantId === t.id && x.categorie === CAT.PROVISIONS && x.date >= unionStart && x.date <= unionEnd)
+        .filter((x) => x.tenantId === t.id && x.categorie === CAT.PROVISIONS && x.date >= provisionsPeriod.start && x.date <= provisionsPeriod.end)
         .reduce((s, x) => s + x.montant, 0);
-      const solde = provisionsPaid - quotePart;
-      rows.push({ tenant: t, coproEntry, teomEntry, quotePart, provisionsPaid, solde });
+      const solde = provisionsPaid - coproQuotePart - teomQuotePart;
+      rows.push({ tenant: t, coproEntry, teomEntry, coproQuotePart, teomQuotePart, provisionsPaid, solde });
     }
-    return { unionStart, unionEnd, totalCharges: (coproCalc?.totalAmount || 0) + (teomCalc?.totalAmount || 0), rows };
+    return { provisionsPeriod, totalCharges: (coproCalc?.totalAmount || 0) + (teomCalc?.totalAmount || 0), rows };
   }, [propertyId, coproCalc, teomCalc, coproPeriodStart, coproPeriodEnd, teomPeriodStart, teomPeriodEnd, tenantsForProperty, transactions]);
 
   useEffect(() => { setSaved(false); }, [propertyId, coproPeriodStart, coproPeriodEnd, chargesAppart, chargesParking, teomPeriodStart, teomPeriodEnd, chargesTeom]);
@@ -1598,7 +1599,7 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
     if (!result || result.rows.length === 0) return;
     await onSave({
       propertyId,
-      periodStart: result.unionStart, periodEnd: result.unionEnd, // pour compat avec l'historique existant
+      periodStart: result.provisionsPeriod.start, periodEnd: result.provisionsPeriod.end, // pour compat avec l'historique existant
       coproPeriodStart: coproCalc ? coproPeriodStart : null, coproPeriodEnd: coproCalc ? coproPeriodEnd : null,
       teomPeriodStart: teomCalc ? teomPeriodStart : null, teomPeriodEnd: teomCalc ? teomPeriodEnd : null,
       chargesAppart: num(chargesAppart), chargesParking: num(chargesParking), chargesTeom: num(chargesTeom),
@@ -1606,8 +1607,8 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
       createdAt: today(),
       rows: result.rows.map((r) => ({
         tenantId: r.tenant.id, tenantName: r.tenant.name,
-        coproQuotePart: r.coproEntry?.quotePart || 0, teomQuotePart: r.teomEntry?.quotePart || 0,
-        quotePart: r.quotePart, provisionsPaid: r.provisionsPaid, solde: r.solde,
+        coproQuotePart: r.coproQuotePart, teomQuotePart: r.teomQuotePart,
+        quotePart: r.coproQuotePart + r.teomQuotePart, provisionsPaid: r.provisionsPaid, solde: r.solde,
       })),
     });
     setSaved(true);
@@ -1658,7 +1659,7 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
       {result && result.rows.length > 0 && (
         <div className="mt-4 space-y-3">
           <p className="text-xs text-[#837D62]">
-            Chaque poste est proratisé sur sa propre période. Les provisions payées sont comparées une seule fois, sur l'ensemble {formatDateForDisplay(result.unionStart)} → {formatDateForDisplay(result.unionEnd)}, pour éviter un double comptage.
+            Les provisions du locataire couvrent les charges de copropriété : elles sont comparées à la quote-part copro sur la période {formatDateForDisplay(result.provisionsPeriod.start)} → {formatDateForDisplay(result.provisionsPeriod.end)}. Le TEOM, proratisé sur sa propre période, n'est pas couvert par ces provisions : il est facturé/déduit en plus.
           </p>
           {result.rows.map((r) => (
             <div key={r.tenant.id} className="rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3">
@@ -1666,12 +1667,13 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
                 <span className="text-[#F1EEE2]">{r.tenant.name}</span>
               </div>
               <div className="mt-1 space-y-0.5 text-xs text-[#837D62]">
-                {r.coproEntry && <div>Copro : {formatDateForDisplay(r.coproEntry.overlapStart)} → {formatDateForDisplay(r.coproEntry.overlapEnd)} ({r.coproEntry.presenceDays} j.) → {formatCurrency(r.coproEntry.quotePart)}</div>}
-                {r.teomEntry && <div>TEOM : {formatDateForDisplay(r.teomEntry.overlapStart)} → {formatDateForDisplay(r.teomEntry.overlapEnd)} ({r.teomEntry.presenceDays} j.) → {formatCurrency(r.teomEntry.quotePart)}</div>}
+                {r.coproEntry && <div>Copro : {formatDateForDisplay(r.coproEntry.overlapStart)} → {formatDateForDisplay(r.coproEntry.overlapEnd)} ({r.coproEntry.presenceDays} j.) → {formatCurrency(r.coproQuotePart)}</div>}
+                {r.teomEntry && <div>TEOM : {formatDateForDisplay(r.teomEntry.overlapStart)} → {formatDateForDisplay(r.teomEntry.overlapEnd)} ({r.teomEntry.presenceDays} j.) → {formatCurrency(r.teomQuotePart)} (à facturer, hors provisions)</div>}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-                <div><span className="text-[#837D62]">Total dû (copro + TEOM)</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.quotePart)}</div></div>
-                <div><span className="text-[#837D62]">Provisions payées</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.provisionsPaid)}</div></div>
+                <div><span className="text-[#837D62]">Provisions payées (copro)</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.provisionsPaid)}</div></div>
+                <div><span className="text-[#837D62]">Quote-part copro</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.coproQuotePart)}</div></div>
+                {r.teomQuotePart > 0 && <div><span className="text-[#837D62]">TEOM à déduire</span><div className="font-mono tabular-nums text-[#E68A72]">−{formatCurrency(r.teomQuotePart)}</div></div>}
                 <div>
                   <span className="text-[#837D62]">{r.solde >= 0 ? "À rembourser au locataire" : "Complément à réclamer"}</span>
                   <div className={`font-mono tabular-nums ${r.solde >= 0 ? "text-[#7BC99A]" : "text-[#E68A72]"}`}>{formatCurrency(Math.abs(r.solde))}</div>
