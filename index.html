@@ -133,11 +133,12 @@ const CAT = {
   TRAVAUX: "Travaux d'entretien & réparation",
   FRAIS_GESTION: "Frais de gestion / Conciergerie",
   HONORAIRES: "Honoraires d'agence",
+  REGUL_CHARGES: "Régularisation de charges (avec locataire)",
   AUTRE: "Autre charge déductible",
 };
 // TEOM n'est pas sélectionnable directement : elle est créée automatiquement en même temps
 // que la taxe foncière (voir OperationFormModal), donc absente de cette liste de choix.
-const CHARGE_CATEGORIES = [CAT.CHARGES_COPRO, CAT.ASSURANCE_PNO, CAT.TAXE_FONCIERE, CAT.TRAVAUX, CAT.FRAIS_GESTION, CAT.HONORAIRES, CAT.AUTRE];
+const CHARGE_CATEGORIES = [CAT.CHARGES_COPRO, CAT.ASSURANCE_PNO, CAT.TAXE_FONCIERE, CAT.TRAVAUX, CAT.FRAIS_GESTION, CAT.HONORAIRES, CAT.REGUL_CHARGES, CAT.AUTRE];
 const NON_DEDUCTIBLE = new Set([CAT.CAPITAL, CAT.TEOM]);
 const RECETTE_CATS = new Set([CAT.LOYER_HC, CAT.PROVISIONS]);
 
@@ -158,6 +159,7 @@ const TAX_BOX_HINTS = {
   [CAT.TRAVAUX]: { FONCIER: "Case 224 (travaux)", LMNP: "Charges ou immobilisation selon montant" },
   [CAT.FRAIS_GESTION]: { FONCIER: "Case 221/222 (frais de gestion)", LMNP: "Charges externes — cpte 622" },
   [CAT.HONORAIRES]: { FONCIER: "Case 221 (honoraires)", LMNP: "Charges externes — cpte 622" },
+  [CAT.REGUL_CHARGES]: { FONCIER: "Complément perçu → case 211 ; remboursement → case 225/226", LMNP: "Complément perçu → cpte 706 ; remboursement → cpte 613/622" },
   [CAT.AUTRE]: { FONCIER: "Case 229 (autres charges)", LMNP: "Selon nature — à valider avec ton comptable" },
 };
 function taxBoxLabel(categorie, regime) {
@@ -897,6 +899,10 @@ function useLedgerStore() {
     if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.addDoc(api.collection(api.db, "regularisations"), regul); }
     else setRegularisations((prev) => [...prev, { id: uid(), ...regul }]);
   }, []);
+  const updateRegularisation = useCallback(async (id, patch) => {
+    if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.updateDoc(api.doc(api.db, "regularisations", id), patch); }
+    else setRegularisations((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }, []);
   const deleteRegularisation = useCallback(async (id) => {
     if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.deleteDoc(api.doc(api.db, "regularisations", id)); }
     else setRegularisations((prev) => prev.filter((r) => r.id !== id));
@@ -928,7 +934,7 @@ function useLedgerStore() {
     else setDocuments((prev) => prev.filter((d) => d.id !== docItem.id));
   }, []);
 
-  return { ready, properties, tenants, transactions, regularisations, documents, addProperty, updateProperty, deleteProperty, addTenant, updateTenant, deleteTenant, addTransactions, updateTransaction, deleteTransaction, deleteTransactionGroup, addRegularisation, deleteRegularisation, addDocument, deleteDocument };
+  return { ready, properties, tenants, transactions, regularisations, documents, addProperty, updateProperty, deleteProperty, addTenant, updateTenant, deleteTenant, addTransactions, updateTransaction, deleteTransaction, deleteTransactionGroup, addRegularisation, updateRegularisation, deleteRegularisation, addDocument, deleteDocument };
 }
 
 /* ============================================================================
@@ -1520,8 +1526,9 @@ function DocumentsModal({ open, onClose, documents, properties, onAdd, onDelete 
 /* ============================================================================
  * RÉGULARISATION DE CHARGES ANNUELLES
  * ==========================================================================*/
-function ChargeRegulModal({ open, onClose, properties, tenants, transactions, regularisations, onSave, onDelete }) {
+function ChargeRegulModal({ open, onClose, properties, tenants, transactions, regularisations, onSave, onUpdate, onDelete }) {
   const [propertyId, setPropertyId] = useState(properties[0]?.id || "");
+  const [editingId, setEditingId] = useState(null);
   // La période de la copro (exercice du syndic) et celle de la taxe foncière/TEOM (année civile)
   // ne coïncident généralement pas : chacune a donc son propre prorata, calculé indépendamment.
   const [coproPeriodStart, setCoproPeriodStart] = useState("");
@@ -1595,9 +1602,29 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
 
   useEffect(() => { setSaved(false); }, [propertyId, coproPeriodStart, coproPeriodEnd, chargesAppart, chargesParking, teomPeriodStart, teomPeriodEnd, chargesTeom]);
 
+  function resetForm() {
+    setEditingId(null);
+    setCoproPeriodStart(""); setCoproPeriodEnd(""); setChargesAppart(""); setChargesParking("");
+    setTeomPeriodStart(""); setTeomPeriodEnd(""); setChargesTeom("");
+    setSaved(false);
+  }
+
+  function loadForEdit(h) {
+    setPropertyId(h.propertyId);
+    setCoproPeriodStart(h.coproPeriodStart || h.periodStart || "");
+    setCoproPeriodEnd(h.coproPeriodEnd || h.periodEnd || "");
+    setChargesAppart(h.chargesAppart != null ? String(h.chargesAppart) : "");
+    setChargesParking(h.chargesParking != null ? String(h.chargesParking) : "");
+    setTeomPeriodStart(h.teomPeriodStart || "");
+    setTeomPeriodEnd(h.teomPeriodEnd || "");
+    setChargesTeom(h.chargesTeom != null ? String(h.chargesTeom) : "");
+    setEditingId(h.id);
+    setSaved(false);
+  }
+
   async function handleSave() {
     if (!result || result.rows.length === 0) return;
-    await onSave({
+    const payload = {
       propertyId,
       periodStart: result.provisionsPeriod.start, periodEnd: result.provisionsPeriod.end, // pour compat avec l'historique existant
       coproPeriodStart: coproCalc ? coproPeriodStart : null, coproPeriodEnd: coproCalc ? coproPeriodEnd : null,
@@ -1610,7 +1637,9 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
         coproQuotePart: r.coproQuotePart, teomQuotePart: r.teomQuotePart,
         quotePart: r.coproQuotePart + r.teomQuotePart, provisionsPaid: r.provisionsPaid, solde: r.solde,
       })),
-    });
+    };
+    if (editingId) await onUpdate(editingId, payload);
+    else await onSave(payload);
     setSaved(true);
   }
 
@@ -1658,6 +1687,9 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
 
       {result && result.rows.length > 0 && (
         <div className="mt-4 space-y-3">
+          {editingId && (
+            <p className="rounded-md border border-[#9A5B34]/50 bg-[#9A5B34]/10 px-3 py-1.5 text-xs text-[#E0A164]">Modification de la régularisation enregistrée — "Mettre à jour" remplacera ses valeurs.</p>
+          )}
           <p className="text-xs text-[#837D62]">
             Les provisions du locataire couvrent les charges de copropriété : elles sont comparées à la quote-part copro sur la période {formatDateForDisplay(result.provisionsPeriod.start)} → {formatDateForDisplay(result.provisionsPeriod.end)}. Le TEOM, proratisé sur sa propre période, n'est pas couvert par ces provisions : il est facturé/déduit en plus.
           </p>
@@ -1667,13 +1699,13 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
                 <span className="text-[#F1EEE2]">{r.tenant.name}</span>
               </div>
               <div className="mt-1 space-y-0.5 text-xs text-[#837D62]">
-                {r.coproEntry && <div>Copro : {formatDateForDisplay(r.coproEntry.overlapStart)} → {formatDateForDisplay(r.coproEntry.overlapEnd)} ({r.coproEntry.presenceDays} j.) → {formatCurrency(r.coproQuotePart)}</div>}
-                {r.teomEntry && <div>TEOM : {formatDateForDisplay(r.teomEntry.overlapStart)} → {formatDateForDisplay(r.teomEntry.overlapEnd)} ({r.teomEntry.presenceDays} j.) → {formatCurrency(r.teomQuotePart)} (à facturer, hors provisions)</div>}
+                {r.coproEntry && <div>Copro : présence {r.coproEntry.presenceDays} j. / {coproCalc.totalDays} j. de la période ({formatDateForDisplay(r.coproEntry.overlapStart)} → {formatDateForDisplay(r.coproEntry.overlapEnd)}) → prorata {formatCurrency(r.coproQuotePart)} sur {formatCurrency(coproCalc.totalAmount)}</div>}
+                {r.teomEntry && <div>TEOM : présence {r.teomEntry.presenceDays} j. / {teomCalc.totalDays} j. de la période ({formatDateForDisplay(r.teomEntry.overlapStart)} → {formatDateForDisplay(r.teomEntry.overlapEnd)}) → prorata {formatCurrency(r.teomQuotePart)} sur {formatCurrency(teomCalc.totalAmount)} (hors provisions, à déduire)</div>}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
                 <div><span className="text-[#837D62]">Provisions payées (copro)</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.provisionsPaid)}</div></div>
-                <div><span className="text-[#837D62]">Quote-part copro</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.coproQuotePart)}</div></div>
-                {r.teomQuotePart > 0 && <div><span className="text-[#837D62]">TEOM à déduire</span><div className="font-mono tabular-nums text-[#E68A72]">−{formatCurrency(r.teomQuotePart)}</div></div>}
+                <div><span className="text-[#837D62]">Quote-part copro (prorata)</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.coproQuotePart)}</div></div>
+                {r.teomQuotePart > 0 && <div><span className="text-[#837D62]">TEOM à déduire (prorata {r.teomEntry.presenceDays}/{teomCalc.totalDays} j.)</span><div className="font-mono tabular-nums text-[#E68A72]">−{formatCurrency(r.teomQuotePart)}</div></div>}
                 <div>
                   <span className="text-[#837D62]">{r.solde >= 0 ? "À rembourser au locataire" : "Complément à réclamer"}</span>
                   <div className={`font-mono tabular-nums ${r.solde >= 0 ? "text-[#7BC99A]" : "text-[#E68A72]"}`}>{formatCurrency(Math.abs(r.solde))}</div>
@@ -1682,9 +1714,14 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
             </div>
           ))}
           <div className="flex items-center justify-end gap-2">
-            {saved && <span className="text-sm text-[#7BC99A]">Enregistrée ✓</span>}
+            {saved && <span className="text-sm text-[#7BC99A]">{editingId ? "Mise à jour enregistrée ✓" : "Enregistrée ✓"}</span>}
+            {editingId && (
+              <button type="button" onClick={resetForm} className="rounded-lg border border-[#454227] px-4 py-2 text-sm font-medium text-[#C9C4AC] hover:bg-[#2E2C1E]">
+                Annuler la modification
+              </button>
+            )}
             <button type="button" onClick={handleSave} disabled={saved} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#B4703F] disabled:opacity-40">
-              {saved ? "Enregistrée" : "Enregistrer cette régularisation"}
+              {saved ? (editingId ? "Mise à jour enregistrée" : "Enregistrée") : (editingId ? "Mettre à jour cette régularisation" : "Enregistrer cette régularisation")}
             </button>
           </div>
         </div>
@@ -1692,10 +1729,14 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
 
       {history.length > 0 && (
         <div className="mt-6 border-t border-[#2A2818] pt-4">
-          <h3 className="mb-2 text-sm font-medium text-[#C9C4AC]">Historique des régularisations enregistrées</h3>
+          <h3 className="mb-2 text-sm font-medium text-[#C9C4AC]">Historique des régularisations enregistrées <span className="font-normal text-[#837D62]">— clique une ligne pour la modifier</span></h3>
           <div className="space-y-2">
             {history.map((h) => (
-              <div key={h.id} className="rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3">
+              <div
+                key={h.id}
+                onClick={() => loadForEdit(h)}
+                className={`cursor-pointer rounded-lg border px-4 py-3 transition-colors hover:border-[#9A5B34]/60 ${editingId === h.id ? "border-[#9A5B34] bg-[#2E2C1E]" : "border-[#33311E] bg-[#242316]"}`}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="text-sm text-[#F1EEE2]">
@@ -1709,7 +1750,7 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
                       {(h.chargesAppart != null || h.chargesParking != null || h.chargesTeom != null) && ` (Appart. ${formatCurrency(h.chargesAppart || 0)} + Parking ${formatCurrency(h.chargesParking || 0)}${h.chargesTeom ? ` + TEOM ${formatCurrency(h.chargesTeom)}` : ""})`}
                     </div>
                   </div>
-                  <button onClick={() => onDelete(h.id)} className="rounded-md p-1.5 text-[#E68A72] hover:bg-[#3A2019]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); onDelete(h.id); if (editingId === h.id) resetForm(); }} className="rounded-md p-1.5 text-[#E68A72] hover:bg-[#3A2019]" aria-label="Supprimer"><Trash2 size={15} /></button>
                 </div>
                 <div className="mt-2 space-y-1 border-t border-[#2A2818] pt-2 text-xs text-[#A29C82]">
                   {(h.rows || []).map((r, i) => (
@@ -1760,6 +1801,8 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
   const [chargeMontantParking, setChargeMontantParking] = useState("");
   const [taxeFonciereTotal, setTaxeFonciereTotal] = useState("");
   const [taxeFonciereTeom, setTaxeFonciereTeom] = useState("");
+  const [regulComplement, setRegulComplement] = useState("");
+  const [regulRemboursement, setRegulRemboursement] = useState("");
   const [chargeLibelle, setChargeLibelle] = useState("");
 
   const tenantsForProperty = useMemo(() => tenants.filter((t) => t.propertyId === propertyId), [tenants, propertyId]);
@@ -1783,6 +1826,8 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
       setChargeMontantParking(editingGroup.chargeMontantParking ?? "");
       setTaxeFonciereTotal(editingGroup.taxeFonciereTotal ?? "");
       setTaxeFonciereTeom(editingGroup.taxeFonciereTeom ?? "");
+      setRegulComplement(editingGroup.regulComplement ?? "");
+      setRegulRemboursement(editingGroup.regulRemboursement ?? "");
       setChargeLibelle(editingGroup.chargeLibelle ?? "");
     } else {
       setTab("LOYER");
@@ -1805,7 +1850,7 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
   const loyerTotal = num(loyerHC) + num(provisions);
   const mensualiteTotal = num(capital) + num(interets) + num(assurance);
 
-  function resetAll() { setLoyerHC(""); setProvisions(""); setCapital(""); setInterets(""); setAssurance(""); setChargeMontant(""); setChargeMontantAppart(""); setChargeMontantParking(""); setTaxeFonciereTotal(""); setTaxeFonciereTeom(""); setChargeLibelle(""); }
+  function resetAll() { setLoyerHC(""); setProvisions(""); setCapital(""); setInterets(""); setAssurance(""); setChargeMontant(""); setChargeMontantAppart(""); setChargeMontantParking(""); setTaxeFonciereTotal(""); setTaxeFonciereTeom(""); setRegulComplement(""); setRegulRemboursement(""); setChargeLibelle(""); }
 
   async function submit(e) {
     e.preventDefault();
@@ -1833,6 +1878,12 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
         const deductible = Math.max(0, num(taxeFonciereTotal) - num(taxeFonciereTeom));
         if (deductible > 0) rows.push({ ...base, categorie: CAT.TAXE_FONCIERE, libelle: "Taxe foncière (hors TEOM)", montant: deductible, typeOperation: "Depense" });
         if (num(taxeFonciereTeom) > 0) rows.push({ ...base, categorie: CAT.TEOM, libelle: "Taxe ordures ménagères (TEOM)", montant: num(taxeFonciereTeom), typeOperation: "Depense" });
+      } else if (chargeCategorie === CAT.REGUL_CHARGES) {
+        // Solde d'une régularisation de charges avec le locataire : un complément qu'il te verse est
+        // une recette (même nature que les provisions), un remboursement que tu lui fais est une charge
+        // (fiscalement neutre par rapport à une baisse de recette, puisque seul le résultat net compte).
+        if (num(regulComplement) > 0) rows.push({ ...base, categorie: CAT.REGUL_CHARGES, libelle: chargeLibelle.trim() || "Complément régularisation charges", montant: num(regulComplement), typeOperation: "Recette" });
+        if (num(regulRemboursement) > 0) rows.push({ ...base, categorie: CAT.REGUL_CHARGES, libelle: chargeLibelle.trim() || "Remboursement régularisation charges", montant: num(regulRemboursement), typeOperation: "Depense" });
       } else if (num(chargeMontant) > 0) {
         rows.push({ ...base, categorie: chargeCategorie, libelle: chargeLibelle.trim(), montant: num(chargeMontant), typeOperation: "Depense" });
       }
@@ -1928,6 +1979,17 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
                   → Taxe foncière déductible : <span className="font-mono tabular-nums text-[#7BC99A]">{formatCurrency(Math.max(0, num(taxeFonciereTotal) - num(taxeFonciereTeom)))}</span>
                   {" "}· TEOM non déductible (récupérable auprès du locataire) : <span className="font-mono tabular-nums text-[#E68A72]">{formatCurrency(num(taxeFonciereTeom))}</span>.
                   {" "}La TEOM est retirée automatiquement du calcul de tes charges déductibles — utilise l'outil « Régularisation de charges » pour la refacturer au locataire.
+                </p>
+              </>
+            ) : chargeCategorie === CAT.REGUL_CHARGES ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Complément perçu du locataire (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={regulComplement} onChange={(e) => setRegulComplement(e.target.value)} placeholder="0" /></Field>
+                  <Field label="Remboursé au locataire (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={regulRemboursement} onChange={(e) => setRegulRemboursement(e.target.value)} placeholder="561.99" /></Field>
+                </div>
+                <Field label="Libellé (optionnel)"><input className={inputClasses} value={chargeLibelle} onChange={(e) => setChargeLibelle(e.target.value)} placeholder="Ex. Régul. charges 2025 — Lucie Serveau" /></Field>
+                <p className="text-xs text-[#837D62]">
+                  Renseigne un seul des deux montants selon le solde de l'outil « Régularisation de charges » : un complément perçu est une recette, un remboursement au locataire une charge — fiscalement neutre, l'effet sur ton résultat net est le même qu'une baisse de recette.
                 </p>
               </>
             ) : (
@@ -2027,8 +2089,12 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
 
   const categoryBreakdown = useMemo(() => allCategories.map((cat) => {
     const rows = yearPropertyFiltered.filter((t) => t.categorie === cat);
-    const total = rows.reduce((s, t) => s + t.montant, 0);
-    return { categorie: cat, count: rows.length, total, isRecette: RECETTE_CATS.has(cat), taxBox: taxBoxLabel(cat, breakdownRegime) };
+    // Solde signé (Recette positive, Dépense négative) : pour la quasi-totalité des catégories,
+    // toutes les lignes ont le même sens et ce solde vaut la simple somme des montants comme avant.
+    // Seule "Régularisation de charges" peut mélanger complément perçu (Recette) et remboursement
+    // au locataire (Dépense) dans une même catégorie : le solde signé reflète alors le net.
+    const net = rows.reduce((s, t) => s + (t.typeOperation === "Recette" ? t.montant : -t.montant), 0);
+    return { categorie: cat, count: rows.length, total: Math.abs(net), isRecette: net >= 0, taxBox: taxBoxLabel(cat, breakdownRegime) };
   }), [yearPropertyFiltered, allCategories, breakdownRegime]);
 
   const breakdownNet = useMemo(() => {
@@ -2062,6 +2128,12 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
       const deductible = amountFor(CAT.TAXE_FONCIERE) || 0;
       const teom = amountFor(CAT.TEOM) || 0;
       return { tab, chargeCategorie: CAT.TAXE_FONCIERE, taxeFonciereTotal: deductible + teom, taxeFonciereTeom: teom, chargeLibelle: "" };
+    }
+    if (t.categorie === CAT.REGUL_CHARGES) {
+      const regulRows = group.filter((x) => x.categorie === CAT.REGUL_CHARGES);
+      const complement = regulRows.find((x) => x.typeOperation === "Recette")?.montant ?? "";
+      const remboursement = regulRows.find((x) => x.typeOperation === "Depense")?.montant ?? "";
+      return { tab, chargeCategorie: CAT.REGUL_CHARGES, regulComplement: complement, regulRemboursement: remboursement, chargeLibelle: t.libelle || "" };
     }
     return { tab, chargeCategorie: t.categorie, chargeMontant: t.montant, chargeLibelle: t.libelle || "" };
   }
@@ -2317,6 +2389,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         transactions={transactions}
         regularisations={store.regularisations}
         onSave={store.addRegularisation}
+        onUpdate={store.updateRegularisation}
         onDelete={store.deleteRegularisation}
       />
       <OperationFormModal
