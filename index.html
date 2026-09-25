@@ -1699,6 +1699,8 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
   const [assurance, setAssurance] = useState("");
   const [chargeCategorie, setChargeCategorie] = useState(CHARGE_CATEGORIES[0]);
   const [chargeMontant, setChargeMontant] = useState("");
+  const [chargeMontantAppart, setChargeMontantAppart] = useState("");
+  const [chargeMontantParking, setChargeMontantParking] = useState("");
   const [chargeLibelle, setChargeLibelle] = useState("");
 
   const tenantsForProperty = useMemo(() => tenants.filter((t) => t.propertyId === propertyId), [tenants, propertyId]);
@@ -1718,6 +1720,8 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
       setAssurance(editingGroup.assurance ?? "");
       setChargeCategorie(editingGroup.chargeCategorie ?? CHARGE_CATEGORIES[0]);
       setChargeMontant(editingGroup.chargeMontant ?? "");
+      setChargeMontantAppart(editingGroup.chargeMontantAppart ?? "");
+      setChargeMontantParking(editingGroup.chargeMontantParking ?? "");
       setChargeLibelle(editingGroup.chargeLibelle ?? "");
     } else {
       setTab("LOYER");
@@ -1740,7 +1744,7 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
   const loyerTotal = num(loyerHC) + num(provisions);
   const mensualiteTotal = num(capital) + num(interets) + num(assurance);
 
-  function resetAll() { setLoyerHC(""); setProvisions(""); setCapital(""); setInterets(""); setAssurance(""); setChargeMontant(""); setChargeLibelle(""); }
+  function resetAll() { setLoyerHC(""); setProvisions(""); setCapital(""); setInterets(""); setAssurance(""); setChargeMontant(""); setChargeMontantAppart(""); setChargeMontantParking(""); setChargeLibelle(""); }
 
   async function submit(e) {
     e.preventDefault();
@@ -1759,7 +1763,12 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
       if (num(capital) > 0) rows.push({ ...base, categorie: CAT.CAPITAL, libelle: `Capital amorti ${property?.name || ""}`.trim(), montant: num(capital), typeOperation: "Depense" });
     }
     if (tab === "CHARGE") {
-      if (num(chargeMontant) > 0) rows.push({ ...base, categorie: chargeCategorie, libelle: chargeLibelle.trim(), montant: num(chargeMontant), typeOperation: "Depense" });
+      if (chargeCategorie === CAT.CHARGES_COPRO) {
+        if (num(chargeMontantAppart) > 0) rows.push({ ...base, categorie: CAT.CHARGES_COPRO, libelle: "Appartement", montant: num(chargeMontantAppart), typeOperation: "Depense" });
+        if (num(chargeMontantParking) > 0) rows.push({ ...base, categorie: CAT.CHARGES_COPRO, libelle: "Parking", montant: num(chargeMontantParking), typeOperation: "Depense" });
+      } else if (num(chargeMontant) > 0) {
+        rows.push({ ...base, categorie: chargeCategorie, libelle: chargeLibelle.trim(), montant: num(chargeMontant), typeOperation: "Depense" });
+      }
     }
     if (rows.length === 0) return;
     await onSubmitGroup(rows, isEditing ? editingGroup.groupId : null);
@@ -1834,10 +1843,20 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
                 {CHARGE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Montant (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargeMontant} onChange={(e) => setChargeMontant(e.target.value)} placeholder="120" /></Field>
-              <Field label="Libellé (optionnel)"><input className={inputClasses} value={chargeLibelle} onChange={(e) => setChargeLibelle(e.target.value)} placeholder="Ex. Ravalement façade" /></Field>
-            </div>
+            {chargeCategorie === CAT.CHARGES_COPRO ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Charges appartement (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargeMontantAppart} onChange={(e) => setChargeMontantAppart(e.target.value)} placeholder="120" /></Field>
+                  <Field label="Charges parking (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargeMontantParking} onChange={(e) => setChargeMontantParking(e.target.value)} placeholder="15" /></Field>
+                </div>
+                <p className="text-xs text-[#837D62]">Total : {formatCurrency(num(chargeMontantAppart) + num(chargeMontantParking))} — saisis séparément pour l'appartement et le parking, comme pour la régularisation de charges.</p>
+              </>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Montant (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargeMontant} onChange={(e) => setChargeMontant(e.target.value)} placeholder="120" /></Field>
+                <Field label="Libellé (optionnel)"><input className={inputClasses} value={chargeLibelle} onChange={(e) => setChargeLibelle(e.target.value)} placeholder="Ex. Ravalement façade" /></Field>
+              </div>
+            )}
           </>
         )}
 
@@ -1908,7 +1927,9 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
       const title = tab === "LOYER" ? `Loyer ${monthLabel(first.date)}`
         : tab === "EMPRUNT" ? `Mensualité ${monthLabel(first.date)}`
         : first.categorie;
-      const subtitle = tab === "CHARGE" ? (first.libelle || "") : tab === "LOYER" ? (tenantsById[first.tenantId]?.name || "") : "";
+      const subtitle = tab === "CHARGE"
+        ? (rows.length > 1 ? rows.map((r) => r.libelle).filter(Boolean).join(" + ") : (first.libelle || ""))
+        : tab === "LOYER" ? (tenantsById[first.tenantId]?.name || "") : "";
       return { key: first.groupId || first.id, date: first.date, propertyId: first.propertyId, montant, isRecette, title, subtitle, representative: first };
     }).sort((a, b) => (a.date < b.date ? 1 : -1));
   }, [filtered, viewMode, tenantsById]);
@@ -1949,6 +1970,15 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
     const tab = detectGroupTab(group);
     if (tab === "LOYER") return { tab, loyerHC: amountFor(CAT.LOYER_HC), provisions: amountFor(CAT.PROVISIONS), tenantId: group[0]?.tenantId || "" };
     if (tab === "EMPRUNT") return { tab, capital: amountFor(CAT.CAPITAL), interets: amountFor(CAT.INTERETS), assurance: amountFor(CAT.ASSURANCE_EMPRUNT) };
+    if (t.categorie === CAT.CHARGES_COPRO) {
+      const coproRows = group.filter((x) => x.categorie === CAT.CHARGES_COPRO);
+      const isSplit = coproRows.length > 1 || coproRows.some((x) => x.libelle === "Appartement" || x.libelle === "Parking");
+      if (isSplit) {
+        const appart = coproRows.find((x) => x.libelle === "Appartement")?.montant ?? "";
+        const parking = coproRows.find((x) => x.libelle === "Parking")?.montant ?? "";
+        return { tab, chargeCategorie: CAT.CHARGES_COPRO, chargeMontantAppart: appart, chargeMontantParking: parking, chargeLibelle: "" };
+      }
+    }
     return { tab, chargeCategorie: t.categorie, chargeMontant: t.montant, chargeLibelle: t.libelle || "" };
   }
   function handleEditRow(t) {
