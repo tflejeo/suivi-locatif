@@ -12,7 +12,7 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  html, body { margin: 0; background: #EDEBDF; max-width: 100%; overflow-x: hidden; }
+  html, body { margin: 0; background: #1B1A15; max-width: 100%; overflow-x: hidden; }
   * { min-width: 0; }
 </style>
 </head>
@@ -117,8 +117,8 @@ const REGIMES = {
   FONCIER: { id: "FONCIER", label: "Revenus fonciers" },
 };
 const REGIME_ACCENT = {
-  LMNP: { text: "text-[#9A5B34]", bg: "bg-[#9A5B34]/10" },
-  FONCIER: { text: "text-[#3D5A73]", bg: "bg-[#3D5A73]/10" },
+  LMNP: { text: "text-[#E0A164]", bg: "bg-[#9A5B34]/20" },
+  FONCIER: { text: "text-[#8FB4D6]", bg: "bg-[#3D5A73]/25" },
 };
 const CAT = {
   LOYER_HC: "Loyer Hors Charges",
@@ -932,32 +932,32 @@ function useLedgerStore() {
  * ==========================================================================*/
 function KPICard({ label, value, tone = "neutral", icon: Icon }) {
   const toneMap = {
-    positive: { text: "text-[#3F6B4F]", chip: "bg-[#3F6B4F]/10 text-[#3F6B4F]" },
-    negative: { text: "text-[#A2432A]", chip: "bg-[#A2432A]/10 text-[#A2432A]" },
-    neutral: { text: "text-[#20211D]", chip: "bg-[#20211D]/10 text-[#20211D]" },
+    positive: { text: "text-[#7BC99A]", chip: "bg-[#3F6B4F]/10 text-[#7BC99A]" },
+    negative: { text: "text-[#E68A72]", chip: "bg-[#A2432A]/10 text-[#E68A72]" },
+    neutral: { text: "text-[#F1EEE2]", chip: "bg-[#20211D]/10 text-[#F1EEE2]" },
   }[tone];
   return (
-    <div className="flex-1 min-w-[180px] rounded-2xl border border-[#DEDAC9] bg-white px-5 py-4 shadow-sm transition-shadow hover:shadow-md">
+    <div className="flex-1 min-w-[180px] rounded-2xl border border-[#33311E] bg-[#242316] px-5 py-4 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-center gap-3">
         {Icon && <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${toneMap.chip}`}><Icon size={16} /></span>}
-        <span className="text-sm text-[#6B6858]">{label}</span>
+        <span className="text-sm text-[#A29C82]">{label}</span>
       </div>
       <div className={`mt-3 font-mono text-2xl font-semibold tabular-nums ${toneMap.text}`}>{formatCurrency(value)}</div>
     </div>
   );
 }
 function Field({ label, children }) {
-  return (<label className="block"><span className="mb-1 block text-sm text-[#5B5849]">{label}</span>{children}</label>);
+  return (<label className="block"><span className="mb-1 block text-sm text-[#C9C4AC]">{label}</span>{children}</label>);
 }
-const inputClasses = "w-full rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-[#20211D] outline-none focus:border-[#9A5B34] focus:ring-2 focus:ring-[#9A5B34]/20";
+const inputClasses = "w-full rounded-lg border border-[#454227] bg-[#242316] px-3 py-2 text-[#F1EEE2] outline-none focus:border-[#9A5B34] focus:ring-2 focus:ring-[#9A5B34]/20";
 function Toggle({ checked, onChange, label }) {
   return (
     <div className="flex items-center gap-2">
-      {label && <span className="text-sm text-[#5B5849]">{label}</span>}
+      {label && <span className="text-sm text-[#C9C4AC]">{label}</span>}
       <button
         type="button" role="switch" aria-checked={checked} aria-label={label}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${checked ? "bg-[#9A5B34]" : "bg-[#D6D2C0]"}`}
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${checked ? "bg-[#9A5B34]" : "bg-[#454227]"}`}
       >
         <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : "translate-x-0.5"}`} />
       </button>
@@ -968,11 +968,11 @@ function Toggle({ checked, onChange, label }) {
 function Modal({ open, onClose, title, children, wide }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#20211D]/40 p-4">
-      <div className={`max-h-[90vh] w-full ${wide ? "max-w-2xl" : "max-w-md"} overflow-y-auto rounded-2xl bg-[#F7F5EC] p-6 shadow-xl`}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0E0D09]/70 p-4">
+      <div className={`max-h-[90vh] w-full ${wide ? "max-w-2xl" : "max-w-md"} overflow-y-auto rounded-2xl border border-[#33311E] bg-[#242316] p-6 shadow-xl`}>
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-[#20211D]">{title}</h2>
-          <button onClick={onClose} className="rounded-full p-1 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Fermer"><X size={18} /></button>
+          <h2 className="text-lg font-semibold text-[#F1EEE2]">{title}</h2>
+          <button onClick={onClose} className="rounded-full p-1 text-[#A29C82] hover:bg-[#2E2C1E]" aria-label="Fermer"><X size={18} /></button>
         </div>
         {children}
       </div>
@@ -985,8 +985,8 @@ function Modal({ open, onClose, title, children, wide }) {
 function MenuButton({ label, icon: Icon, items, variant = "ghost" }) {
   const [open, setOpen] = useState(false);
   const variantClasses = variant === "dark"
-    ? "border-white/15 bg-white/10 text-[#F7F5EC] hover:bg-white/20"
-    : "border-[#D6D2C0] bg-white text-[#5B5849] hover:bg-[#F7F5EC]";
+    ? "border-white/15 bg-white/10 text-[#F1EEE2] hover:bg-white/20"
+    : "border-[#454227] bg-[#242316] text-[#C9C4AC] hover:bg-[#2E2C1E]";
   return (
     <div className="relative">
       <button
@@ -998,17 +998,17 @@ function MenuButton({ label, icon: Icon, items, variant = "ghost" }) {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-1.5 w-60 overflow-hidden rounded-xl border border-[#DEDAC9] bg-white py-1 shadow-lg">
+          <div className="absolute right-0 z-50 mt-1.5 w-60 overflow-hidden rounded-xl border border-[#33311E] bg-[#242316] py-1 shadow-lg">
             {items.map((it) => (
               <button
                 key={it.label} type="button"
                 onClick={() => { setOpen(false); it.onClick(); }}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-[#20211D] hover:bg-[#F7F5EC]"
+                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-[#F1EEE2] hover:bg-[#2E2C1E]"
               >
-                <it.icon size={16} className="flex-shrink-0 text-[#6B6858]" />
+                <it.icon size={16} className="flex-shrink-0 text-[#A29C82]" />
                 <span>
                   <span className="block">{it.label}</span>
-                  {it.hint && <span className="block text-xs text-[#8A876F]">{it.hint}</span>}
+                  {it.hint && <span className="block text-xs text-[#837D62]">{it.hint}</span>}
                 </span>
               </button>
             ))}
@@ -1052,24 +1052,24 @@ function PropertyManagerModal({ open, onClose, properties, onAdd, onUpdate, onDe
             </select>
           </Field>
         </div>
-        <button type="submit" className="rounded-lg bg-[#20211D] px-4 py-2 text-sm font-medium text-[#F7F5EC] hover:bg-[#3A3B33]">
+        <button type="submit" className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-[#F1EEE2] hover:bg-[#B4703F]">
           {editingId ? "Enregistrer" : "Ajouter"}
         </button>
-        {editingId && <button type="button" onClick={resetForm} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Annuler</button>}
+        {editingId && <button type="button" onClick={resetForm} className="rounded-lg border border-[#454227] px-4 py-2 text-sm text-[#C9C4AC]">Annuler</button>}
       </form>
       <div className="space-y-2">
-        {properties.length === 0 && <p className="text-sm text-[#8A876F]">Aucun bien enregistré pour l'instant.</p>}
+        {properties.length === 0 && <p className="text-sm text-[#837D62]">Aucun bien enregistré pour l'instant.</p>}
         {properties.map((p) => {
           const accent = REGIME_ACCENT[p.regime];
           return (
-            <div key={p.id} className="flex items-center justify-between rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
+            <div key={p.id} className="flex items-center justify-between rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3">
               <div className="flex items-center gap-3">
                 <span className={`rounded-full px-2 py-0.5 text-xs ${accent.bg} ${accent.text}`}>{REGIMES[p.regime].label}</span>
-                <span className="text-[#20211D]">{p.name}</span>
+                <span className="text-[#F1EEE2]">{p.name}</span>
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={() => startEdit(p)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
-                <button onClick={() => onDelete(p.id)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                <button onClick={() => startEdit(p)} className="rounded-md p-1.5 text-[#A29C82] hover:bg-[#2E2C1E]" aria-label="Modifier"><Pencil size={15} /></button>
+                <button onClick={() => onDelete(p.id)} className="rounded-md p-1.5 text-[#E68A72] hover:bg-[#3A2019]" aria-label="Supprimer"><Trash2 size={15} /></button>
               </div>
             </div>
           );
@@ -1138,35 +1138,35 @@ function TenantManagerModal({ open, onClose, tenants, properties, transactions, 
             <input type="date" className={inputClasses} value={leaseEnd} disabled={ongoing} onChange={(e) => setLeaseEnd(e.target.value)} />
           </Field>
         </div>
-        <label className="flex items-center gap-2 text-sm text-[#5B5849]">
+        <label className="flex items-center gap-2 text-sm text-[#C9C4AC]">
           <input type="checkbox" checked={ongoing} onChange={(e) => setOngoing(e.target.checked)} />
           Bail en cours (pas de date de fin)
         </label>
         <div className="flex gap-2">
-          <button type="submit" className="rounded-lg bg-[#20211D] px-4 py-2 text-sm font-medium text-[#F7F5EC] hover:bg-[#3A3B33]">{editingId ? "Enregistrer" : "Ajouter"}</button>
-          {editingId && <button type="button" onClick={resetForm} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Annuler</button>}
+          <button type="submit" className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-[#F1EEE2] hover:bg-[#B4703F]">{editingId ? "Enregistrer" : "Ajouter"}</button>
+          {editingId && <button type="button" onClick={resetForm} className="rounded-lg border border-[#454227] px-4 py-2 text-sm text-[#C9C4AC]">Annuler</button>}
         </div>
       </form>
 
       <div className="space-y-2">
-        {tenants.length === 0 && <p className="text-sm text-[#8A876F]">Aucun locataire enregistré pour l'instant.</p>}
+        {tenants.length === 0 && <p className="text-sm text-[#837D62]">Aucun locataire enregistré pour l'instant.</p>}
         {tenants.map((t) => {
           const property = properties.find((p) => p.id === t.propertyId);
           const yearly = provisionsByYear(t.id);
           return (
-            <div key={t.id} className="rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
+            <div key={t.id} className="rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <div className="text-[#20211D]">{t.name}</div>
-                  <div className="text-xs text-[#8A876F]">{property?.name || "—"} · bail du {formatDateForDisplay(t.leaseStart)}{t.leaseEnd ? ` au ${formatDateForDisplay(t.leaseEnd)}` : " (en cours)"}</div>
+                  <div className="text-[#F1EEE2]">{t.name}</div>
+                  <div className="text-xs text-[#837D62]">{property?.name || "—"} · bail du {formatDateForDisplay(t.leaseStart)}{t.leaseEnd ? ` au ${formatDateForDisplay(t.leaseEnd)}` : " (en cours)"}</div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => startEdit(t)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
-                  <button onClick={() => onDelete(t.id)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                  <button onClick={() => startEdit(t)} className="rounded-md p-1.5 text-[#A29C82] hover:bg-[#2E2C1E]" aria-label="Modifier"><Pencil size={15} /></button>
+                  <button onClick={() => onDelete(t.id)} className="rounded-md p-1.5 text-[#E68A72] hover:bg-[#3A2019]" aria-label="Supprimer"><Trash2 size={15} /></button>
                 </div>
               </div>
               {yearly.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-[#EFEDE0] pt-2 text-xs text-[#6B6858]">
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-[#2A2818] pt-2 text-xs text-[#A29C82]">
                   {yearly.map(([year, total]) => <span key={year}>Provisions {year} : <span className="font-mono tabular-nums">{formatCurrency(total)}</span></span>)}
                 </div>
               )}
@@ -1253,19 +1253,19 @@ function ImportLoanModal({ open, onClose, properties, transactions, onImport }) 
           placeholder={"2026-01-05;1142.78;137.92\n2026-02-05;1143.86;136.84\n..."}
         />
       </Field>
-      <p className="mt-2 text-xs text-[#8A876F]">
+      <p className="mt-2 text-xs text-[#837D62]">
         {parsed.length} échéance(s) reconnue(s) à partir du {formatDateForDisplay(fromDate)} · Total capital : {formatCurrency(totalCapital)} · Total intérêts : {formatCurrency(totalInterets)}.
         L'assurance emprunteur n'est pas incluse — modifie ensuite chaque saisie pour l'ajouter.
-        {duplicateCount > 0 && <span className="text-[#A2432A]"> {duplicateCount} échéance(s) semblent déjà saisies à ces dates pour ce bien.</span>}
+        {duplicateCount > 0 && <span className="text-[#E68A72]"> {duplicateCount} échéance(s) semblent déjà saisies à ces dates pour ce bien.</span>}
       </p>
 
       {result && (
-        <p className="mt-3 text-sm text-[#3F6B4F]">{result.count} échéance(s) importée(s) avec succès. Tu peux les retrouver et compléter l'assurance via « Modifier » sur chaque ligne.</p>
+        <p className="mt-3 text-sm text-[#7BC99A]">{result.count} échéance(s) importée(s) avec succès. Tu peux les retrouver et compléter l'assurance via « Modifier » sur chaque ligne.</p>
       )}
 
       <div className="mt-4 flex justify-end gap-2">
-        <button type="button" onClick={onClose} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Fermer</button>
-        <button type="button" onClick={handleImport} disabled={!propertyId || parsed.length === 0} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">Importer {parsed.length > 0 ? `(${parsed.length})` : ""}</button>
+        <button type="button" onClick={onClose} className="rounded-lg border border-[#454227] px-4 py-2 text-sm text-[#C9C4AC]">Fermer</button>
+        <button type="button" onClick={handleImport} disabled={!propertyId || parsed.length === 0} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#B4703F] disabled:opacity-40">Importer {parsed.length > 0 ? `(${parsed.length})` : ""}</button>
       </div>
     </Modal>
   );
@@ -1363,7 +1363,7 @@ function ImportInsuranceModal({ open, onClose, properties, transactions, onAddTr
           {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </Field>
-      <p className="mt-2 text-xs text-[#8A876F]">Colle ici la somme des cotisations mensuelles de tous les co-emprunteurs assurés (une ligne par mois). Chaque montant viendra compléter automatiquement la saisie « Capital + Intérêts » déjà existante pour ce mois, ou sera ajouté si aucune ligne d'assurance n'existe encore.</p>
+      <p className="mt-2 text-xs text-[#837D62]">Colle ici la somme des cotisations mensuelles de tous les co-emprunteurs assurés (une ligne par mois). Chaque montant viendra compléter automatiquement la saisie « Capital + Intérêts » déjà existante pour ce mois, ou sera ajouté si aucune ligne d'assurance n'existe encore.</p>
       <Field label="Échéancier cumulé (une ligne par mois : AAAA-MM;Montant)">
         <textarea
           className={`${inputClasses} mt-1 h-48 font-mono text-xs`}
@@ -1373,21 +1373,21 @@ function ImportInsuranceModal({ open, onClose, properties, transactions, onAddTr
         />
       </Field>
 
-      <div className="mt-3 rounded-lg border border-[#DEDAC9] bg-white p-3 text-sm">
-        <p className="text-[#5B5849]">{parsed.length} mois reconnu(s) · Total cumulé : {formatCurrency(totalMontant)}</p>
-        <p className="mt-1 text-[#3F6B4F]">{counts.maj} saisie(s) existante(s) seront mises à jour · {counts.creation} ligne(s) « Assurance emprunteur » seront créées.</p>
+      <div className="mt-3 rounded-lg border border-[#33311E] bg-[#242316] p-3 text-sm">
+        <p className="text-[#C9C4AC]">{parsed.length} mois reconnu(s) · Total cumulé : {formatCurrency(totalMontant)}</p>
+        <p className="mt-1 text-[#7BC99A]">{counts.maj} saisie(s) existante(s) seront mises à jour · {counts.creation} ligne(s) « Assurance emprunteur » seront créées.</p>
         {counts.nonTrouve > 0 && (
-          <p className="mt-1 text-[#A2432A]">{counts.nonTrouve} mois sans saisie d'emprunt correspondante pour ce bien (ex. avant le début de l'échéancier importé) — ignorés : {preview.filter((r) => r.status === "non-trouve").map((r) => r.month).join(", ")}</p>
+          <p className="mt-1 text-[#E68A72]">{counts.nonTrouve} mois sans saisie d'emprunt correspondante pour ce bien (ex. avant le début de l'échéancier importé) — ignorés : {preview.filter((r) => r.status === "non-trouve").map((r) => r.month).join(", ")}</p>
         )}
       </div>
 
       {result && (
-        <p className="mt-3 text-sm text-[#3F6B4F]">{result.maj} saisie(s) mise(s) à jour et {result.creation} ligne(s) créée(s) avec succès.</p>
+        <p className="mt-3 text-sm text-[#7BC99A]">{result.maj} saisie(s) mise(s) à jour et {result.creation} ligne(s) créée(s) avec succès.</p>
       )}
 
       <div className="mt-4 flex justify-end gap-2">
-        <button type="button" onClick={onClose} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Fermer</button>
-        <button type="button" onClick={handleApply} disabled={busy || !propertyId || (counts.maj + counts.creation === 0)} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">
+        <button type="button" onClick={onClose} className="rounded-lg border border-[#454227] px-4 py-2 text-sm text-[#C9C4AC]">Fermer</button>
+        <button type="button" onClick={handleApply} disabled={busy || !propertyId || (counts.maj + counts.creation === 0)} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#B4703F] disabled:opacity-40">
           {busy ? "Application..." : `Appliquer (${counts.maj + counts.creation})`}
         </button>
       </div>
@@ -1449,7 +1449,7 @@ function DocumentsModal({ open, onClose, documents, properties, onAdd, onDelete 
 
   return (
     <Modal open={open} onClose={onClose} title="Justificatifs" wide>
-      <form onSubmit={handleUpload} className="grid grid-cols-1 gap-3 rounded-lg border border-[#DEDAC9] bg-white p-3 sm:grid-cols-2">
+      <form onSubmit={handleUpload} className="grid grid-cols-1 gap-3 rounded-lg border border-[#33311E] bg-[#242316] p-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <Field label="Fichier">
             <input
@@ -1459,7 +1459,7 @@ function DocumentsModal({ open, onClose, documents, properties, onAdd, onDelete 
               onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
           </Field>
-          <p className="mt-1 text-xs text-[#8A876F]">Taille max. {(DOCUMENT_MAX_SIZE / 1024).toFixed(0)} Ko par fichier (stockage dans Firestore, sans Firebase Storage).</p>
+          <p className="mt-1 text-xs text-[#837D62]">Taille max. {(DOCUMENT_MAX_SIZE / 1024).toFixed(0)} Ko par fichier (stockage dans Firestore, sans Firebase Storage).</p>
         </div>
         <Field label="Type de dépense">
           <select className={inputClasses} value={categorie} onChange={(e) => setCategorie(e.target.value)}>
@@ -1476,35 +1476,35 @@ function DocumentsModal({ open, onClose, documents, properties, onAdd, onDelete 
           <input type="text" inputMode="numeric" placeholder="ex. 2026" className={inputClasses} value={year} onChange={(e) => setYear(e.target.value)} />
         </Field>
         <div className="flex items-end">
-          <button type="submit" disabled={!file || busy} className="w-full rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">
+          <button type="submit" disabled={!file || busy} className="w-full rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#B4703F] disabled:opacity-40">
             {busy ? "Envoi..." : "Ajouter le justificatif"}
           </button>
         </div>
       </form>
-      {error && <p className="mt-2 text-sm text-[#A2432A]">{error}</p>}
-      {!FIREBASE_ENABLED && <p className="mt-2 text-xs text-[#8A876F]">Mode local : les fichiers sont stockés dans ce navigateur uniquement (non partagés entre appareils).</p>}
+      {error && <p className="mt-2 text-sm text-[#E68A72]">{error}</p>}
+      {!FIREBASE_ENABLED && <p className="mt-2 text-xs text-[#837D62]">Mode local : les fichiers sont stockés dans ce navigateur uniquement (non partagés entre appareils).</p>}
 
       <div className="mt-4 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-[#5B5849]">Documents enregistrés ({visible.length})</h3>
+        <h3 className="text-sm font-medium text-[#C9C4AC]">Documents enregistrés ({visible.length})</h3>
         <select className={`${inputClasses} w-auto py-1.5 text-sm`} value={filterPropertyId} onChange={(e) => setFilterPropertyId(e.target.value)}>
           <option value="">Tous les biens</option>
           {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </div>
-      <div className="mt-2 max-h-72 divide-y divide-[#EFEDE0] overflow-y-auto rounded-lg border border-[#DEDAC9] bg-white">
-        {visible.length === 0 && <p className="px-3 py-6 text-center text-sm text-[#8A876F]">Aucun justificatif enregistré.</p>}
+      <div className="mt-2 max-h-72 divide-y divide-[#2A2818] overflow-y-auto rounded-lg border border-[#33311E] bg-[#242316]">
+        {visible.length === 0 && <p className="px-3 py-6 text-center text-sm text-[#837D62]">Aucun justificatif enregistré.</p>}
         {visible.map((d) => {
           const property = properties.find((p) => p.id === d.propertyId);
           return (
             <div key={d.id} className="flex items-center justify-between gap-2 px-3 py-2">
               <button type="button" onClick={() => openDocument(d)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                <FileText size={16} className="flex-shrink-0 text-[#6B6858]" />
+                <FileText size={16} className="flex-shrink-0 text-[#A29C82]" />
                 <span className="min-w-0">
-                  <span className="block truncate text-sm text-[#20211D]">{d.fileName}</span>
-                  <span className="block truncate text-xs text-[#8A876F]">{d.categorie}{d.year ? ` · ${d.year}` : ""}{property ? ` · ${property.name}` : ""}</span>
+                  <span className="block truncate text-sm text-[#F1EEE2]">{d.fileName}</span>
+                  <span className="block truncate text-xs text-[#837D62]">{d.categorie}{d.year ? ` · ${d.year}` : ""}{property ? ` · ${property.name}` : ""}</span>
                 </span>
               </button>
-              <button type="button" onClick={() => handleDelete(d)} className="flex-shrink-0 rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+              <button type="button" onClick={() => handleDelete(d)} className="flex-shrink-0 rounded-md p-1.5 text-[#E68A72] hover:bg-[#3A2019]" aria-label="Supprimer"><Trash2 size={15} /></button>
             </div>
           );
         })}
@@ -1599,39 +1599,39 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
         </Field>
       </div>
       {(num(chargesAppart) > 0 || num(chargesParking) > 0) && (
-        <p className="-mt-3 mb-5 text-xs text-[#8A876F]">Total charges réelles retenu : <span className="font-mono tabular-nums">{formatCurrency(num(chargesAppart) + num(chargesParking))}</span></p>
+        <p className="-mt-3 mb-5 text-xs text-[#837D62]">Total charges réelles retenu : <span className="font-mono tabular-nums">{formatCurrency(num(chargesAppart) + num(chargesParking))}</span></p>
       )}
 
       {!result && (
-        <p className="text-sm text-[#8A876F]">Renseigne le bien, la période et le montant des charges réelles pour calculer la régularisation.</p>
+        <p className="text-sm text-[#837D62]">Renseigne le bien, la période et le montant des charges réelles pour calculer la régularisation.</p>
       )}
 
       {result && result.rows.length === 0 && (
-        <p className="text-sm text-[#8A876F]">Aucun locataire présent sur cette période pour ce bien.</p>
+        <p className="text-sm text-[#837D62]">Aucun locataire présent sur cette période pour ce bien.</p>
       )}
 
       {result && result.rows.length > 0 && (
         <div className="space-y-3">
-          <p className="text-xs text-[#8A876F]">Période : {result.totalDays} jour(s) · Charges réelles totales : {formatCurrency(result.totalCharges)}. La quote-part de chaque locataire est calculée au prorata de ses jours de présence sur la période.</p>
+          <p className="text-xs text-[#837D62]">Période : {result.totalDays} jour(s) · Charges réelles totales : {formatCurrency(result.totalCharges)}. La quote-part de chaque locataire est calculée au prorata de ses jours de présence sur la période.</p>
           {result.rows.map((r) => (
-            <div key={r.tenant.id} className="rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
+            <div key={r.tenant.id} className="rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3">
               <div className="flex items-center justify-between">
-                <span className="text-[#20211D]">{r.tenant.name}</span>
-                <span className="text-xs text-[#8A876F]">{formatDateForDisplay(r.overlapStart)} → {formatDateForDisplay(r.overlapEnd)} ({r.presenceDays} j.)</span>
+                <span className="text-[#F1EEE2]">{r.tenant.name}</span>
+                <span className="text-xs text-[#837D62]">{formatDateForDisplay(r.overlapStart)} → {formatDateForDisplay(r.overlapEnd)} ({r.presenceDays} j.)</span>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-                <div><span className="text-[#8A876F]">Quote-part réelle</span><div className="font-mono tabular-nums text-[#20211D]">{formatCurrency(r.quotePart)}</div></div>
-                <div><span className="text-[#8A876F]">Provisions payées</span><div className="font-mono tabular-nums text-[#20211D]">{formatCurrency(r.provisionsPaid)}</div></div>
+                <div><span className="text-[#837D62]">Quote-part réelle</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.quotePart)}</div></div>
+                <div><span className="text-[#837D62]">Provisions payées</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.provisionsPaid)}</div></div>
                 <div>
-                  <span className="text-[#8A876F]">{r.solde >= 0 ? "À rembourser au locataire" : "Complément à réclamer"}</span>
-                  <div className={`font-mono tabular-nums ${r.solde >= 0 ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>{formatCurrency(Math.abs(r.solde))}</div>
+                  <span className="text-[#837D62]">{r.solde >= 0 ? "À rembourser au locataire" : "Complément à réclamer"}</span>
+                  <div className={`font-mono tabular-nums ${r.solde >= 0 ? "text-[#7BC99A]" : "text-[#E68A72]"}`}>{formatCurrency(Math.abs(r.solde))}</div>
                 </div>
               </div>
             </div>
           ))}
           <div className="flex items-center justify-end gap-2">
-            {saved && <span className="text-sm text-[#3F6B4F]">Enregistrée ✓</span>}
-            <button type="button" onClick={handleSave} disabled={saved} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">
+            {saved && <span className="text-sm text-[#7BC99A]">Enregistrée ✓</span>}
+            <button type="button" onClick={handleSave} disabled={saved} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#B4703F] disabled:opacity-40">
               {saved ? "Enregistrée" : "Enregistrer cette régularisation"}
             </button>
           </div>
@@ -1639,26 +1639,26 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
       )}
 
       {history.length > 0 && (
-        <div className="mt-6 border-t border-[#EFEDE0] pt-4">
-          <h3 className="mb-2 text-sm font-medium text-[#5B5849]">Historique des régularisations enregistrées</h3>
+        <div className="mt-6 border-t border-[#2A2818] pt-4">
+          <h3 className="mb-2 text-sm font-medium text-[#C9C4AC]">Historique des régularisations enregistrées</h3>
           <div className="space-y-2">
             {history.map((h) => (
-              <div key={h.id} className="rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
+              <div key={h.id} className="rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="text-sm text-[#20211D]">{formatDateForDisplay(h.periodStart)} → {formatDateForDisplay(h.periodEnd)}</div>
-                    <div className="text-xs text-[#8A876F]">
+                    <div className="text-sm text-[#F1EEE2]">{formatDateForDisplay(h.periodStart)} → {formatDateForDisplay(h.periodEnd)}</div>
+                    <div className="text-xs text-[#837D62]">
                       Charges réelles : {formatCurrency(h.chargesReelles)}
                       {(h.chargesAppart != null || h.chargesParking != null) && ` (Appart. ${formatCurrency(h.chargesAppart || 0)} + Parking ${formatCurrency(h.chargesParking || 0)})`}
                     </div>
                   </div>
-                  <button onClick={() => onDelete(h.id)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                  <button onClick={() => onDelete(h.id)} className="rounded-md p-1.5 text-[#E68A72] hover:bg-[#3A2019]" aria-label="Supprimer"><Trash2 size={15} /></button>
                 </div>
-                <div className="mt-2 space-y-1 border-t border-[#EFEDE0] pt-2 text-xs text-[#6B6858]">
+                <div className="mt-2 space-y-1 border-t border-[#2A2818] pt-2 text-xs text-[#A29C82]">
                   {(h.rows || []).map((r, i) => (
                     <div key={i} className="flex items-center justify-between">
                       <span>{r.tenantName}</span>
-                      <span className={r.solde >= 0 ? "text-[#3F6B4F]" : "text-[#A2432A]"}>
+                      <span className={r.solde >= 0 ? "text-[#7BC99A]" : "text-[#E68A72]"}>
                         {r.solde >= 0 ? "À rembourser : " : "Complément : "}{formatCurrency(Math.abs(r.solde))}
                       </span>
                     </div>
@@ -1769,12 +1769,12 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
 
   return (
     <Modal open={open} onClose={onClose} title={isEditing ? "Modifier l'opération" : isDuplicating ? "Dupliquer l'opération" : "Nouvelle opération"} wide>
-      <div className="mb-5 flex gap-2 rounded-lg bg-[#EAE7D9] p-1">
+      <div className="mb-5 flex gap-2 rounded-lg bg-[#17160F] p-1">
         {OPERATION_TABS.map((t) => {
           const Icon = t.icon; const active = tab === t.id;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors ${active ? "bg-white text-[#20211D] shadow-sm" : "text-[#6B6858] hover:text-[#20211D]"}`}>
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors ${active ? "bg-[#242316] text-[#F1EEE2] shadow-sm" : "text-[#A29C82] hover:text-[#F1EEE2]"}`}>
               <Icon size={15} />{t.label}
             </button>
           );
@@ -1805,9 +1805,9 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
               <Field label="Loyer Hors Charges (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={loyerHC} onChange={(e) => setLoyerHC(e.target.value)} placeholder="550" /></Field>
               <Field label="Provisions sur charges (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={provisions} onChange={(e) => setProvisions(e.target.value)} placeholder="50" /></Field>
             </div>
-            <div className="flex items-center justify-between rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
-              <span className="text-sm text-[#5B5849]">Total perçu</span>
-              <span className="font-mono text-lg tabular-nums text-[#20211D]">{formatCurrency(loyerTotal)}</span>
+            <div className="flex items-center justify-between rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3">
+              <span className="text-sm text-[#C9C4AC]">Total perçu</span>
+              <span className="font-mono text-lg tabular-nums text-[#F1EEE2]">{formatCurrency(loyerTotal)}</span>
             </div>
           </>
         )}
@@ -1819,11 +1819,11 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
               <Field label="Intérêts d'emprunt (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={interets} onChange={(e) => setInterets(e.target.value)} placeholder="180" /></Field>
               <Field label="Assurance emprunteur (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={assurance} onChange={(e) => setAssurance(e.target.value)} placeholder="25" /></Field>
             </div>
-            <div className="flex items-center justify-between rounded-lg border border-[#DEDAC9] bg-white px-4 py-3">
-              <span className="text-sm text-[#5B5849]">Mensualité totale</span>
-              <span className="font-mono text-lg tabular-nums text-[#20211D]">{formatCurrency(mensualiteTotal)}</span>
+            <div className="flex items-center justify-between rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3">
+              <span className="text-sm text-[#C9C4AC]">Mensualité totale</span>
+              <span className="font-mono text-lg tabular-nums text-[#F1EEE2]">{formatCurrency(mensualiteTotal)}</span>
             </div>
-            <p className="text-xs text-[#8A876F]">Le capital amorti est suivi en trésorerie mais exclu des charges déductibles.</p>
+            <p className="text-xs text-[#837D62]">Le capital amorti est suivi en trésorerie mais exclu des charges déductibles.</p>
           </>
         )}
 
@@ -1842,8 +1842,8 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
         )}
 
         <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="rounded-lg border border-[#D6D2C0] px-4 py-2 text-sm text-[#5B5849]">Annuler</button>
-          <button type="submit" disabled={!propertyId} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#84492A] disabled:opacity-40">{isEditing ? "Enregistrer les modifications" : "Enregistrer"}</button>
+          <button type="button" onClick={onClose} className="rounded-lg border border-[#454227] px-4 py-2 text-sm text-[#C9C4AC]">Annuler</button>
+          <button type="submit" disabled={!propertyId} className="rounded-lg bg-[#9A5B34] px-4 py-2 text-sm font-medium text-white hover:bg-[#B4703F] disabled:opacity-40">{isEditing ? "Enregistrer les modifications" : "Enregistrer"}</button>
         </div>
       </form>
     </Modal>
@@ -1976,15 +1976,15 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#EDEBDF] text-[#20211D]">
+    <div className="min-h-screen bg-[#1B1A15] text-[#F1EEE2]">
       <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
-        <div className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-br from-[#20211D] via-[#3A3B33] to-[#9A5B34] px-5 py-6 text-[#F7F5EC] shadow-md sm:px-7 sm:py-7">
+        <div className="relative z-10 mb-6 rounded-2xl bg-gradient-to-br from-[#20211D] via-[#3A3B33] to-[#9A5B34] px-5 py-6 text-[#F1EEE2] shadow-md sm:px-7 sm:py-7">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/15"><Landmark size={22} /></span>
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight">Bailly</h1>
-                <p className="text-sm text-[#F7F5EC]/70">Registre locatif — LMNP réel &amp; revenus fonciers, export prêt pour Qlower</p>
+                <p className="text-sm text-[#F1EEE2]/70">Registre locatif — LMNP réel &amp; revenus fonciers, export prêt pour Qlower</p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -2010,27 +2010,27 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
                 ]}
               />
               <button onClick={handleExport} className="flex items-center gap-1.5 rounded-lg bg-[#F7F5EC] px-3 py-2 text-sm font-medium text-[#20211D] shadow-sm hover:bg-white" aria-label="Exporter en CSV"><Download size={15} /><span className="hidden sm:inline">Exporter</span></button>
-              {showSignOut && <button onClick={onSignOut} className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-2.5 py-2 text-sm text-[#F7F5EC] shadow-sm hover:bg-white/20" aria-label="Se déconnecter"><LogOut size={15} /></button>}
+              {showSignOut && <button onClick={onSignOut} className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-2.5 py-2 text-sm text-[#F1EEE2] shadow-sm hover:bg-white/20" aria-label="Se déconnecter"><LogOut size={15} /></button>}
             </div>
           </div>
         </div>
 
-        <div className="mb-6 rounded-2xl border border-[#DEDAC9] bg-white/80 p-4 shadow-sm">
+        <div className="mb-6 rounded-2xl border border-[#33311E] bg-[#242316]/80 p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => setSelectedPropertyId("ALL")} className={`rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${selectedPropertyId === "ALL" ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>Toutes mes propriétés</button>
+              <button onClick={() => setSelectedPropertyId("ALL")} className={`rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${selectedPropertyId === "ALL" ? "bg-[#9A5B34] text-[#F1EEE2] ring-[#9A5B34]" : "bg-[#242316] text-[#C9C4AC] ring-[#454227] hover:bg-[#2E2C1E]"}`}>Toutes mes propriétés</button>
               {properties.map((p) => {
                 const accent = REGIME_ACCENT[p.regime]; const active = selectedPropertyId === p.id;
                 return (
-                  <button key={p.id} onClick={() => setSelectedPropertyId(p.id)} className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${active ? "bg-[#20211D] text-[#F7F5EC] ring-[#20211D]" : "bg-white text-[#5B5849] ring-[#D6D2C0] hover:bg-[#F7F5EC]"}`}>
-                    <Building2 size={13} className={active ? "text-[#F7F5EC]" : accent.text} />{p.name}
+                  <button key={p.id} onClick={() => setSelectedPropertyId(p.id)} className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm ring-1 transition-colors ${active ? "bg-[#9A5B34] text-[#F1EEE2] ring-[#9A5B34]" : "bg-[#242316] text-[#C9C4AC] ring-[#454227] hover:bg-[#2E2C1E]"}`}>
+                    <Building2 size={13} className={active ? "text-[#F1EEE2]" : accent.text} />{p.name}
                   </button>
                 );
               })}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-[#6B6858]">Année</span>
-              <select className="rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] shadow-sm" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
+              <span className="text-sm text-[#A29C82]">Année</span>
+              <select className="rounded-lg border border-[#454227] bg-[#242316] px-3 py-2 text-sm text-[#C9C4AC] shadow-sm" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)}>
                 <option value="ALL">Toutes les années</option>
                 {years.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
@@ -2038,11 +2038,11 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
           </div>
         </div>
 
-        <div className="mb-6 overflow-hidden rounded-2xl border border-[#DEDAC9] bg-white shadow-sm">
+        <div className="mb-6 overflow-hidden rounded-2xl border border-[#33311E] bg-[#242316] shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#DEDAC9] bg-[#F7F5EC] text-left text-[#6B6858]">
+                <tr className="border-b border-[#33311E] bg-[#1B1A15] text-left text-[#A29C82]">
                   <th className="px-4 py-2.5 font-medium">Type de saisie</th>
                   <th className="px-4 py-2.5 font-medium">Case déclaration</th>
                   <th className="px-4 py-2.5 text-right font-medium">Nb saisies</th>
@@ -2051,35 +2051,35 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
               </thead>
               <tbody>
                 {categoryBreakdown.map((c) => (
-                  <tr key={c.categorie} className={`border-b border-[#EFEDE0] last:border-0 ${c.count === 0 ? "text-[#B4B19E]" : ""}`}>
-                    <td className="px-4 py-2 text-[#20211D]">{c.categorie}</td>
-                    <td className="px-4 py-2 text-xs text-[#8A876F]">{c.taxBox}</td>
-                    <td className="whitespace-nowrap px-4 py-2 text-right font-mono tabular-nums text-[#5B5849]">{c.count}</td>
-                    <td className={`whitespace-nowrap px-4 py-2 text-right font-mono tabular-nums ${c.count === 0 ? "text-[#B4B19E]" : c.isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>
+                  <tr key={c.categorie} className={`border-b border-[#2A2818] last:border-0 ${c.count === 0 ? "text-[#5C573F]" : ""}`}>
+                    <td className="px-4 py-2 text-[#F1EEE2]">{c.categorie}</td>
+                    <td className="px-4 py-2 text-xs text-[#837D62]">{c.taxBox}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-right font-mono tabular-nums text-[#C9C4AC]">{c.count}</td>
+                    <td className={`whitespace-nowrap px-4 py-2 text-right font-mono tabular-nums ${c.count === 0 ? "text-[#5C573F]" : c.isRecette ? "text-[#7BC99A]" : "text-[#E68A72]"}`}>
                       {c.count === 0 ? "—" : formatCurrency(c.total)}
                     </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t border-[#DEDAC9] bg-[#F7F5EC] font-medium">
-                  <td className="px-4 py-2.5 text-[#20211D]" colSpan={2}>Net de trésorerie</td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-right text-[#6B6858]">{categoryBreakdown.reduce((s, c) => s + c.count, 0)}</td>
-                  <td className={`whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums ${breakdownNet >= 0 ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>{formatCurrency(breakdownNet)}</td>
+                <tr className="border-t border-[#33311E] bg-[#1B1A15] font-medium">
+                  <td className="px-4 py-2.5 text-[#F1EEE2]" colSpan={2}>Net de trésorerie</td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-right text-[#A29C82]">{categoryBreakdown.reduce((s, c) => s + c.count, 0)}</td>
+                  <td className={`whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums ${breakdownNet >= 0 ? "text-[#7BC99A]" : "text-[#E68A72]"}`}>{formatCurrency(breakdownNet)}</td>
                 </tr>
               </tfoot>
             </table>
           </div>
-          <p className="border-t border-[#EFEDE0] px-4 py-2.5 text-xs text-[#8A876F]">
+          <p className="border-t border-[#2A2818] px-4 py-2.5 text-xs text-[#837D62]">
             Correspondances indicatives pour le régime réel (déclaration 2044) — à vérifier chaque année, les numéros de case pouvant légèrement changer. En LMNP réel, pas de case 2042 dédiée : les montants sont repris dans la liasse fiscale (formulaires 2031-2033), d'où le renvoi au poste comptable.
           </p>
         </div>
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <button onClick={openNewForm} disabled={properties.length === 0} className="flex items-center gap-1.5 rounded-lg bg-[#9A5B34] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#84492A] disabled:opacity-40"><Plus size={16} />Nouvelle opération</button>
+          <button onClick={openNewForm} disabled={properties.length === 0} className="flex items-center gap-1.5 rounded-lg bg-[#9A5B34] px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-[#B4703F] disabled:opacity-40"><Plus size={16} />Nouvelle opération</button>
           <div className="flex flex-wrap items-center gap-3">
             <Toggle checked={viewMode === "DETAIL"} onChange={(v) => setViewMode(v ? "DETAIL" : "SIMPLE")} label="Vue détaillée" />
-            <select className="rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] shadow-sm" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+            <select className="rounded-lg border border-[#454227] bg-[#242316] px-3 py-2 text-sm text-[#C9C4AC] shadow-sm" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
               <option value="ALL">Toutes les catégories</option>
               {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -2087,33 +2087,33 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         </div>
 
         {properties.length === 0 && (
-          <div className="mb-4 rounded-lg border border-[#DEDAC9] bg-white px-4 py-3 text-sm text-[#6B6858]">Ajoute un premier bien dans « Mes biens » pour commencer à saisir des opérations.</div>
+          <div className="mb-4 rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3 text-sm text-[#A29C82]">Ajoute un premier bien dans « Mes biens » pour commencer à saisir des opérations.</div>
         )}
 
         {/* Vue mobile : cartes empilées */}
         <div className="space-y-1.5 sm:hidden">
           {displayRows.length === 0 && (
-            <div className="rounded-xl border border-[#DEDAC9] bg-white px-4 py-8 text-center text-sm text-[#8A876F]">Aucune opération pour ces filtres.</div>
+            <div className="rounded-xl border border-[#33311E] bg-[#242316] px-4 py-8 text-center text-sm text-[#837D62]">Aucune opération pour ces filtres.</div>
           )}
           {displayRows.map((row) => {
             const property = propertiesById[row.propertyId];
             return (
-              <div key={row.key} className="rounded-lg border border-[#DEDAC9] bg-white px-3 py-2 shadow-sm">
+              <div key={row.key} className="rounded-lg border border-[#33311E] bg-[#242316] px-3 py-2 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="truncate text-xs font-medium text-[#20211D]">{property?.name || "—"}</div>
-                    <div className="text-[11px] text-[#8A876F]">{formatDateForDisplay(row.date)}</div>
+                    <div className="truncate text-xs font-medium text-[#F1EEE2]">{property?.name || "—"}</div>
+                    <div className="text-[11px] text-[#837D62]">{formatDateForDisplay(row.date)}</div>
                   </div>
-                  <div className={`whitespace-nowrap font-mono text-sm tabular-nums ${row.isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>
+                  <div className={`whitespace-nowrap font-mono text-sm tabular-nums ${row.isRecette ? "text-[#7BC99A]" : "text-[#E68A72]"}`}>
                     {row.isRecette ? "+" : "−"} {formatCurrency(row.montant)}
                   </div>
                 </div>
-                <div className="mt-0.5 text-xs text-[#5B5849]">{row.title}</div>
-                {row.subtitle && <div className="text-[11px] text-[#8A876F]">{row.subtitle}</div>}
+                <div className="mt-0.5 text-xs text-[#C9C4AC]">{row.title}</div>
+                {row.subtitle && <div className="text-[11px] text-[#837D62]">{row.subtitle}</div>}
                 <div className="mt-1 flex justify-end gap-0.5">
-                  <button onClick={() => handleDuplicateRow(row.representative)} className="rounded-md p-1 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Dupliquer"><Copy size={13} /></button>
-                  <button onClick={() => handleEditRow(row.representative)} className="rounded-md p-1 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={13} /></button>
-                  <button onClick={() => handleDeleteRow(row.representative)} className="rounded-md p-1 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={13} /></button>
+                  <button onClick={() => handleDuplicateRow(row.representative)} className="rounded-md p-1 text-[#A29C82] hover:bg-[#2E2C1E]" aria-label="Dupliquer"><Copy size={13} /></button>
+                  <button onClick={() => handleEditRow(row.representative)} className="rounded-md p-1 text-[#A29C82] hover:bg-[#2E2C1E]" aria-label="Modifier"><Pencil size={13} /></button>
+                  <button onClick={() => handleDeleteRow(row.representative)} className="rounded-md p-1 text-[#E68A72] hover:bg-[#3A2019]" aria-label="Supprimer"><Trash2 size={13} /></button>
                 </div>
               </div>
             );
@@ -2121,10 +2121,10 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         </div>
 
         {/* Vue bureau : tableau */}
-        <div className="hidden overflow-x-auto rounded-2xl border border-[#DEDAC9] bg-white shadow-sm sm:block">
+        <div className="hidden overflow-x-auto rounded-2xl border border-[#33311E] bg-[#242316] shadow-sm sm:block">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#DEDAC9] bg-[#F7F5EC] text-left text-[#6B6858]">
+              <tr className="border-b border-[#33311E] bg-[#1B1A15] text-left text-[#A29C82]">
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 font-medium">Bien</th>
                 <th className="px-4 py-3 font-medium">Catégorie fiscale</th>
@@ -2134,21 +2134,21 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
               </tr>
             </thead>
             <tbody>
-              {displayRows.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-[#8A876F]">Aucune opération pour ces filtres.</td></tr>}
+              {displayRows.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-[#837D62]">Aucune opération pour ces filtres.</td></tr>}
               {displayRows.map((row) => {
                 const property = propertiesById[row.propertyId];
                 return (
-                  <tr key={row.key} className="border-b border-[#EFEDE0] last:border-0 hover:bg-[#FAF9F2]">
-                    <td className="whitespace-nowrap px-4 py-3 text-[#20211D]">{formatDateForDisplay(row.date)}</td>
-                    <td className="px-4 py-3 text-[#20211D]">{property?.name || "—"}</td>
-                    <td className="px-4 py-3 text-[#5B5849]">{row.title}</td>
-                    <td className="px-4 py-3 text-[#5B5849]">{row.subtitle || "—"}</td>
-                    <td className={`whitespace-nowrap px-4 py-3 text-right font-mono tabular-nums ${row.isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>{row.isRecette ? "+" : "−"} {formatCurrency(row.montant)}</td>
+                  <tr key={row.key} className="border-b border-[#2A2818] last:border-0 hover:bg-[#2E2C1E]">
+                    <td className="whitespace-nowrap px-4 py-3 text-[#F1EEE2]">{formatDateForDisplay(row.date)}</td>
+                    <td className="px-4 py-3 text-[#F1EEE2]">{property?.name || "—"}</td>
+                    <td className="px-4 py-3 text-[#C9C4AC]">{row.title}</td>
+                    <td className="px-4 py-3 text-[#C9C4AC]">{row.subtitle || "—"}</td>
+                    <td className={`whitespace-nowrap px-4 py-3 text-right font-mono tabular-nums ${row.isRecette ? "text-[#7BC99A]" : "text-[#E68A72]"}`}>{row.isRecette ? "+" : "−"} {formatCurrency(row.montant)}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">
-                        <button onClick={() => handleDuplicateRow(row.representative)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Dupliquer"><Copy size={15} /></button>
-                        <button onClick={() => handleEditRow(row.representative)} className="rounded-md p-1.5 text-[#6B6858] hover:bg-[#EAE7D9]" aria-label="Modifier"><Pencil size={15} /></button>
-                        <button onClick={() => handleDeleteRow(row.representative)} className="rounded-md p-1.5 text-[#A2432A] hover:bg-[#F3E2DC]" aria-label="Supprimer"><Trash2 size={15} /></button>
+                        <button onClick={() => handleDuplicateRow(row.representative)} className="rounded-md p-1.5 text-[#A29C82] hover:bg-[#2E2C1E]" aria-label="Dupliquer"><Copy size={15} /></button>
+                        <button onClick={() => handleEditRow(row.representative)} className="rounded-md p-1.5 text-[#A29C82] hover:bg-[#2E2C1E]" aria-label="Modifier"><Pencil size={15} /></button>
+                        <button onClick={() => handleDeleteRow(row.representative)} className="rounded-md p-1.5 text-[#E68A72] hover:bg-[#3A2019]" aria-label="Supprimer"><Trash2 size={15} /></button>
                       </div>
                     </td>
                   </tr>
@@ -2158,7 +2158,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
           </table>
         </div>
 
-        {!FIREBASE_ENABLED && <p className="mt-4 text-xs text-[#8A876F]">Mode local : les données sont stockées dans ce navigateur (localStorage). Renseigne FIREBASE_CONFIG en haut du fichier pour passer sur Firestore.</p>}
+        {!FIREBASE_ENABLED && <p className="mt-4 text-xs text-[#837D62]">Mode local : les données sont stockées dans ce navigateur (localStorage). Renseigne FIREBASE_CONFIG en haut du fichier pour passer sur Firestore.</p>}
       </div>
 
       <PropertyManagerModal open={propertiesOpen} onClose={() => setPropertiesOpen(false)} properties={properties} onAdd={store.addProperty} onUpdate={store.updateProperty} onDelete={store.deleteProperty} />
@@ -2248,17 +2248,17 @@ function LoginScreen() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#EDEBDF] px-4">
-      <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-[#DEDAC9] bg-white text-center shadow-sm">
-        <div className="bg-gradient-to-br from-[#20211D] via-[#3A3B33] to-[#9A5B34] px-7 py-7 text-[#F7F5EC]">
+    <div className="flex min-h-screen items-center justify-center bg-[#1B1A15] px-4">
+      <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-[#33311E] bg-[#242316] text-center shadow-sm">
+        <div className="bg-gradient-to-br from-[#20211D] via-[#3A3B33] to-[#9A5B34] px-7 py-7 text-[#F1EEE2]">
           <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-white/15"><Landmark size={24} /></span>
           <h1 className="text-xl font-semibold tracking-tight">Bailly</h1>
-          <p className="mt-1 text-xs text-[#F7F5EC]/70">Registre locatif</p>
+          <p className="mt-1 text-xs text-[#F1EEE2]/70">Registre locatif</p>
         </div>
         <div className="p-7">
-        <div className="mb-4 flex items-center justify-center gap-2 text-[#6B6858]"><Lock size={15} /><span className="text-sm">Connexion requise</span></div>
-        <p className="mb-5 text-sm text-[#6B6858]">Connecte-toi pour accéder à tes données.</p>
-        {error && <p className="mb-3 text-sm text-[#A2432A]">{error}</p>}
+        <div className="mb-4 flex items-center justify-center gap-2 text-[#A29C82]"><Lock size={15} /><span className="text-sm">Connexion requise</span></div>
+        <p className="mb-5 text-sm text-[#A29C82]">Connecte-toi pour accéder à tes données.</p>
+        {error && <p className="mb-3 text-sm text-[#E68A72]">{error}</p>}
         <button onClick={handleGoogleSignIn} disabled={loading}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#D6D2C0] bg-white px-4 py-2.5 text-sm font-medium text-[#20211D] hover:bg-[#F7F5EC] disabled:opacity-40">
           <GoogleG size={18} />{loading ? "Connexion…" : "Se connecter avec Google"}
@@ -2288,7 +2288,7 @@ function App() {
 
   async function handleSignOut() { const api = await getAuthApi(); await api.signOut(api.auth); }
 
-  if (!authChecked) return <div className="flex min-h-screen items-center justify-center bg-[#EDEBDF] text-[#6B6858]">Chargement…</div>;
+  if (!authChecked) return <div className="flex min-h-screen items-center justify-center bg-[#1B1A15] text-[#A29C82]">Chargement…</div>;
   if (FIREBASE_ENABLED && !user) return <LoginScreen />;
   return <RealEstateLedger onSignOut={handleSignOut} showSignOut={FIREBASE_ENABLED} />;
 }
