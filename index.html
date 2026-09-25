@@ -129,13 +129,16 @@ const CAT = {
   CHARGES_COPRO: "Charges copropriété / Provisions syndic",
   ASSURANCE_PNO: "Assurance PNO",
   TAXE_FONCIERE: "Taxe foncière (hors TEOM)",
+  TEOM: "Taxe ordures ménagères (récupérable, non déductible)",
   TRAVAUX: "Travaux d'entretien & réparation",
   FRAIS_GESTION: "Frais de gestion / Conciergerie",
   HONORAIRES: "Honoraires d'agence",
   AUTRE: "Autre charge déductible",
 };
+// TEOM n'est pas sélectionnable directement : elle est créée automatiquement en même temps
+// que la taxe foncière (voir OperationFormModal), donc absente de cette liste de choix.
 const CHARGE_CATEGORIES = [CAT.CHARGES_COPRO, CAT.ASSURANCE_PNO, CAT.TAXE_FONCIERE, CAT.TRAVAUX, CAT.FRAIS_GESTION, CAT.HONORAIRES, CAT.AUTRE];
-const NON_DEDUCTIBLE = new Set([CAT.CAPITAL]);
+const NON_DEDUCTIBLE = new Set([CAT.CAPITAL, CAT.TEOM]);
 const RECETTE_CATS = new Set([CAT.LOYER_HC, CAT.PROVISIONS]);
 
 // Correspondance indicative avec la déclaration de revenus. À vérifier chaque année, les
@@ -151,6 +154,7 @@ const TAX_BOX_HINTS = {
   [CAT.CHARGES_COPRO]: { FONCIER: "Case 225 (charges de copropriété)", LMNP: "Charges externes — cpte 613" },
   [CAT.ASSURANCE_PNO]: { FONCIER: "Case 223 (primes d'assurance)", LMNP: "Charges externes — cpte 616" },
   [CAT.TAXE_FONCIERE]: { FONCIER: "Case 227 (taxe foncière)", LMNP: "Impôts et taxes — cpte 63" },
+  [CAT.TEOM]: { FONCIER: "Non déductible — récupérable auprès du locataire", LMNP: "Non déductible — refacturée au locataire" },
   [CAT.TRAVAUX]: { FONCIER: "Case 224 (travaux)", LMNP: "Charges ou immobilisation selon montant" },
   [CAT.FRAIS_GESTION]: { FONCIER: "Case 221/222 (frais de gestion)", LMNP: "Charges externes — cpte 622" },
   [CAT.HONORAIRES]: { FONCIER: "Case 221 (honoraires)", LMNP: "Charges externes — cpte 622" },
@@ -1522,6 +1526,7 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
   const [periodEnd, setPeriodEnd] = useState("");
   const [chargesAppart, setChargesAppart] = useState("");
   const [chargesParking, setChargesParking] = useState("");
+  const [chargesTeom, setChargesTeom] = useState("");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -1533,7 +1538,7 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
   const result = useMemo(() => {
     if (!propertyId || !periodStart || !periodEnd || periodEnd < periodStart) return null;
     const totalDays = daysBetweenInclusive(periodStart, periodEnd);
-    const totalCharges = num(chargesAppart) + num(chargesParking);
+    const totalCharges = num(chargesAppart) + num(chargesParking) + num(chargesTeom);
     const tenantsForProperty = tenants.filter((t) => t.propertyId === propertyId);
     const rows = [];
     for (const t of tenantsForProperty) {
@@ -1550,15 +1555,15 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
       rows.push({ tenant: t, overlapStart, overlapEnd, presenceDays, quotePart, provisionsPaid, solde });
     }
     return { totalDays, totalCharges, rows };
-  }, [propertyId, periodStart, periodEnd, chargesAppart, chargesParking, tenants, transactions]);
+  }, [propertyId, periodStart, periodEnd, chargesAppart, chargesParking, chargesTeom, tenants, transactions]);
 
-  useEffect(() => { setSaved(false); }, [propertyId, periodStart, periodEnd, chargesAppart, chargesParking]);
+  useEffect(() => { setSaved(false); }, [propertyId, periodStart, periodEnd, chargesAppart, chargesParking, chargesTeom]);
 
   async function handleSave() {
     if (!result || result.rows.length === 0) return;
     await onSave({
       propertyId, periodStart, periodEnd,
-      chargesAppart: num(chargesAppart), chargesParking: num(chargesParking),
+      chargesAppart: num(chargesAppart), chargesParking: num(chargesParking), chargesTeom: num(chargesTeom),
       chargesReelles: result.totalCharges,
       createdAt: today(),
       rows: result.rows.map((r) => ({
@@ -1597,9 +1602,12 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
         <Field label="Charges réelles — Parking (€)">
           <input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesParking} onChange={(e) => setChargesParking(e.target.value)} placeholder="100" />
         </Field>
+        <Field label="Taxe ordures ménagères — TEOM (€)">
+          <input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesTeom} onChange={(e) => setChargesTeom(e.target.value)} placeholder="185" />
+        </Field>
       </div>
-      {(num(chargesAppart) > 0 || num(chargesParking) > 0) && (
-        <p className="-mt-3 mb-5 text-xs text-[#837D62]">Total charges réelles retenu : <span className="font-mono tabular-nums">{formatCurrency(num(chargesAppart) + num(chargesParking))}</span></p>
+      {(num(chargesAppart) > 0 || num(chargesParking) > 0 || num(chargesTeom) > 0) && (
+        <p className="-mt-3 mb-5 text-xs text-[#837D62]">Total charges réelles retenu (dont TEOM) : <span className="font-mono tabular-nums">{formatCurrency(num(chargesAppart) + num(chargesParking) + num(chargesTeom))}</span></p>
       )}
 
       {!result && (
@@ -1649,7 +1657,7 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
                     <div className="text-sm text-[#F1EEE2]">{formatDateForDisplay(h.periodStart)} → {formatDateForDisplay(h.periodEnd)}</div>
                     <div className="text-xs text-[#837D62]">
                       Charges réelles : {formatCurrency(h.chargesReelles)}
-                      {(h.chargesAppart != null || h.chargesParking != null) && ` (Appart. ${formatCurrency(h.chargesAppart || 0)} + Parking ${formatCurrency(h.chargesParking || 0)})`}
+                      {(h.chargesAppart != null || h.chargesParking != null || h.chargesTeom != null) && ` (Appart. ${formatCurrency(h.chargesAppart || 0)} + Parking ${formatCurrency(h.chargesParking || 0)}${h.chargesTeom ? ` + TEOM ${formatCurrency(h.chargesTeom)}` : ""})`}
                     </div>
                   </div>
                   <button onClick={() => onDelete(h.id)} className="rounded-md p-1.5 text-[#E68A72] hover:bg-[#3A2019]" aria-label="Supprimer"><Trash2 size={15} /></button>
@@ -1701,6 +1709,8 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
   const [chargeMontant, setChargeMontant] = useState("");
   const [chargeMontantAppart, setChargeMontantAppart] = useState("");
   const [chargeMontantParking, setChargeMontantParking] = useState("");
+  const [taxeFonciereTotal, setTaxeFonciereTotal] = useState("");
+  const [taxeFonciereTeom, setTaxeFonciereTeom] = useState("");
   const [chargeLibelle, setChargeLibelle] = useState("");
 
   const tenantsForProperty = useMemo(() => tenants.filter((t) => t.propertyId === propertyId), [tenants, propertyId]);
@@ -1722,6 +1732,8 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
       setChargeMontant(editingGroup.chargeMontant ?? "");
       setChargeMontantAppart(editingGroup.chargeMontantAppart ?? "");
       setChargeMontantParking(editingGroup.chargeMontantParking ?? "");
+      setTaxeFonciereTotal(editingGroup.taxeFonciereTotal ?? "");
+      setTaxeFonciereTeom(editingGroup.taxeFonciereTeom ?? "");
       setChargeLibelle(editingGroup.chargeLibelle ?? "");
     } else {
       setTab("LOYER");
@@ -1744,7 +1756,7 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
   const loyerTotal = num(loyerHC) + num(provisions);
   const mensualiteTotal = num(capital) + num(interets) + num(assurance);
 
-  function resetAll() { setLoyerHC(""); setProvisions(""); setCapital(""); setInterets(""); setAssurance(""); setChargeMontant(""); setChargeMontantAppart(""); setChargeMontantParking(""); setChargeLibelle(""); }
+  function resetAll() { setLoyerHC(""); setProvisions(""); setCapital(""); setInterets(""); setAssurance(""); setChargeMontant(""); setChargeMontantAppart(""); setChargeMontantParking(""); setTaxeFonciereTotal(""); setTaxeFonciereTeom(""); setChargeLibelle(""); }
 
   async function submit(e) {
     e.preventDefault();
@@ -1766,6 +1778,12 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
       if (chargeCategorie === CAT.CHARGES_COPRO) {
         if (num(chargeMontantAppart) > 0) rows.push({ ...base, categorie: CAT.CHARGES_COPRO, libelle: "Appartement", montant: num(chargeMontantAppart), typeOperation: "Depense" });
         if (num(chargeMontantParking) > 0) rows.push({ ...base, categorie: CAT.CHARGES_COPRO, libelle: "Parking", montant: num(chargeMontantParking), typeOperation: "Depense" });
+      } else if (chargeCategorie === CAT.TAXE_FONCIERE) {
+        // La TEOM (taxe ordures ménagères) n'est pas déductible : elle est retirée automatiquement
+        // du montant total de l'avis pour obtenir la part de taxe foncière réellement déductible.
+        const deductible = Math.max(0, num(taxeFonciereTotal) - num(taxeFonciereTeom));
+        if (deductible > 0) rows.push({ ...base, categorie: CAT.TAXE_FONCIERE, libelle: "Taxe foncière (hors TEOM)", montant: deductible, typeOperation: "Depense" });
+        if (num(taxeFonciereTeom) > 0) rows.push({ ...base, categorie: CAT.TEOM, libelle: "Taxe ordures ménagères (TEOM)", montant: num(taxeFonciereTeom), typeOperation: "Depense" });
       } else if (num(chargeMontant) > 0) {
         rows.push({ ...base, categorie: chargeCategorie, libelle: chargeLibelle.trim(), montant: num(chargeMontant), typeOperation: "Depense" });
       }
@@ -1850,6 +1868,18 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
                   <Field label="Charges parking (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargeMontantParking} onChange={(e) => setChargeMontantParking(e.target.value)} placeholder="15" /></Field>
                 </div>
                 <p className="text-xs text-[#837D62]">Total : {formatCurrency(num(chargeMontantAppart) + num(chargeMontantParking))} — saisis séparément pour l'appartement et le parking, comme pour la régularisation de charges.</p>
+              </>
+            ) : chargeCategorie === CAT.TAXE_FONCIERE ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Montant total de l'impôt (avis, €)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={taxeFonciereTotal} onChange={(e) => setTaxeFonciereTotal(e.target.value)} placeholder="1483" /></Field>
+                  <Field label="dont TEOM — ordures ménagères (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={taxeFonciereTeom} onChange={(e) => setTaxeFonciereTeom(e.target.value)} placeholder="185" /></Field>
+                </div>
+                <p className="text-xs text-[#837D62]">
+                  → Taxe foncière déductible : <span className="font-mono tabular-nums text-[#7BC99A]">{formatCurrency(Math.max(0, num(taxeFonciereTotal) - num(taxeFonciereTeom)))}</span>
+                  {" "}· TEOM non déductible (récupérable auprès du locataire) : <span className="font-mono tabular-nums text-[#E68A72]">{formatCurrency(num(taxeFonciereTeom))}</span>.
+                  {" "}La TEOM est retirée automatiquement du calcul de tes charges déductibles — utilise l'outil « Régularisation de charges » pour la refacturer au locataire.
+                </p>
               </>
             ) : (
               <div className="grid grid-cols-2 gap-3">
@@ -1978,6 +2008,11 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
         const parking = coproRows.find((x) => x.libelle === "Parking")?.montant ?? "";
         return { tab, chargeCategorie: CAT.CHARGES_COPRO, chargeMontantAppart: appart, chargeMontantParking: parking, chargeLibelle: "" };
       }
+    }
+    if (t.categorie === CAT.TAXE_FONCIERE || t.categorie === CAT.TEOM) {
+      const deductible = amountFor(CAT.TAXE_FONCIERE) || 0;
+      const teom = amountFor(CAT.TEOM) || 0;
+      return { tab, chargeCategorie: CAT.TAXE_FONCIERE, taxeFonciereTotal: deductible + teom, taxeFonciereTeom: teom, chargeLibelle: "" };
     }
     return { tab, chargeCategorie: t.categorie, chargeMontant: t.montant, chargeLibelle: t.libelle || "" };
   }
