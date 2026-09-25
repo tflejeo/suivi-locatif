@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Registre locatif</title>
+<title>Bailly — Registre locatif</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2320211D'/%3E%3Ctext x='32' y='45' font-family='Arial, sans-serif' font-size='34' font-weight='700' fill='%23E2A25C' text-anchor='middle'%3EB%3C/text%3E%3C/svg%3E" />
 
 <!-- React + transform JSX dans le navigateur : pas de npm run build -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -106,6 +107,7 @@ const Calculator = (p) => <IconBase {...p}><rect width="16" height="20" x="4" y=
 const Upload = (p) => <IconBase {...p}><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></IconBase>;
 const FileText = (p) => <IconBase {...p}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></IconBase>;
 const ShieldCheck = (p) => <IconBase {...p}><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></IconBase>;
+const ChevronDown = (p) => <IconBase {...p}><path d="m6 9 6 6 6-6"/></IconBase>;
 
 /* ============================================================================
  * RÉFÉRENTIEL FISCAL
@@ -135,6 +137,31 @@ const CAT = {
 const CHARGE_CATEGORIES = [CAT.CHARGES_COPRO, CAT.ASSURANCE_PNO, CAT.TAXE_FONCIERE, CAT.TRAVAUX, CAT.FRAIS_GESTION, CAT.HONORAIRES, CAT.AUTRE];
 const NON_DEDUCTIBLE = new Set([CAT.CAPITAL]);
 const RECETTE_CATS = new Set([CAT.LOYER_HC, CAT.PROVISIONS]);
+
+// Correspondance indicative avec la déclaration de revenus. À vérifier chaque année, les
+// numéros de case du formulaire 2044 pouvant légèrement bouger. Pour le régime LMNP réel,
+// il n'existe pas de case 2042 dédiée : tout passe par la liasse fiscale (formulaires
+// 2031-2033), donc on indique plutôt le poste comptable concerné.
+const TAX_BOX_HINTS = {
+  [CAT.LOYER_HC]: { FONCIER: "Case 211 (loyers bruts)", LMNP: "Recettes — cpte 706" },
+  [CAT.PROVISIONS]: { FONCIER: "Case 211 (avec régul. en 224/225)", LMNP: "Recettes — cpte 706" },
+  [CAT.INTERETS]: { FONCIER: "Case 250 (intérêts d'emprunt)", LMNP: "Charges financières — cpte 661" },
+  [CAT.ASSURANCE_EMPRUNT]: { FONCIER: "Case 250 (frais financiers)", LMNP: "Charges financières — cpte 661" },
+  [CAT.CAPITAL]: { FONCIER: "Non déductible", LMNP: "Non déductible (remb. de dette)" },
+  [CAT.CHARGES_COPRO]: { FONCIER: "Case 225 (charges de copropriété)", LMNP: "Charges externes — cpte 613" },
+  [CAT.ASSURANCE_PNO]: { FONCIER: "Case 223 (primes d'assurance)", LMNP: "Charges externes — cpte 616" },
+  [CAT.TAXE_FONCIERE]: { FONCIER: "Case 227 (taxe foncière)", LMNP: "Impôts et taxes — cpte 63" },
+  [CAT.TRAVAUX]: { FONCIER: "Case 224 (travaux)", LMNP: "Charges ou immobilisation selon montant" },
+  [CAT.FRAIS_GESTION]: { FONCIER: "Case 221/222 (frais de gestion)", LMNP: "Charges externes — cpte 622" },
+  [CAT.HONORAIRES]: { FONCIER: "Case 221 (honoraires)", LMNP: "Charges externes — cpte 622" },
+  [CAT.AUTRE]: { FONCIER: "Case 229 (autres charges)", LMNP: "Selon nature — à valider avec ton comptable" },
+};
+function taxBoxLabel(categorie, regime) {
+  const hint = TAX_BOX_HINTS[categorie];
+  if (!hint) return "—";
+  if (regime === "MIXTE") return `Foncier : ${hint.FONCIER} · LMNP : ${hint.LMNP}`;
+  return hint[regime] || "—";
+}
 
 const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 function monthLabel(iso) { return MONTHS_FR[parseInt(iso.slice(5, 7), 10) - 1]; }
@@ -949,6 +976,45 @@ function Modal({ open, onClose, title, children, wide }) {
         </div>
         {children}
       </div>
+    </div>
+  );
+}
+
+// Bouton d'en-tête regroupant plusieurs actions liées dans un menu déroulant,
+// pour éviter d'entasser une rangée de petites icônes peu explicites.
+function MenuButton({ label, icon: Icon, items, variant = "ghost" }) {
+  const [open, setOpen] = useState(false);
+  const variantClasses = variant === "dark"
+    ? "border-white/15 bg-white/10 text-[#F7F5EC] hover:bg-white/20"
+    : "border-[#D6D2C0] bg-white text-[#5B5849] hover:bg-[#F7F5EC]";
+  return (
+    <div className="relative">
+      <button
+        type="button" onClick={() => setOpen((o) => !o)}
+        className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm shadow-sm ${variantClasses}`}
+      >
+        <Icon size={15} /><span>{label}</span><ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-50 mt-1.5 w-60 overflow-hidden rounded-xl border border-[#DEDAC9] bg-white py-1 shadow-lg">
+            {items.map((it) => (
+              <button
+                key={it.label} type="button"
+                onClick={() => { setOpen(false); it.onClick(); }}
+                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-[#20211D] hover:bg-[#F7F5EC]"
+              >
+                <it.icon size={16} className="flex-shrink-0 text-[#6B6858]" />
+                <span>
+                  <span className="block">{it.label}</span>
+                  {it.hint && <span className="block text-xs text-[#8A876F]">{it.hint}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1853,11 +1919,17 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
     .filter((t) => selectedPropertyId === "ALL" || t.propertyId === selectedPropertyId)
     .filter((t) => yearFilter === "ALL" || t.date.startsWith(yearFilter)), [transactions, selectedPropertyId, yearFilter]);
 
+  const breakdownRegime = useMemo(() => {
+    if (selectedPropertyId !== "ALL") return propertiesById[selectedPropertyId]?.regime || "MIXTE";
+    const regimes = new Set(properties.map((p) => p.regime));
+    return regimes.size === 1 ? Array.from(regimes)[0] : "MIXTE";
+  }, [selectedPropertyId, propertiesById, properties]);
+
   const categoryBreakdown = useMemo(() => allCategories.map((cat) => {
     const rows = yearPropertyFiltered.filter((t) => t.categorie === cat);
     const total = rows.reduce((s, t) => s + t.montant, 0);
-    return { categorie: cat, count: rows.length, total, isRecette: RECETTE_CATS.has(cat) };
-  }), [yearPropertyFiltered, allCategories]);
+    return { categorie: cat, count: rows.length, total, isRecette: RECETTE_CATS.has(cat), taxBox: taxBoxLabel(cat, breakdownRegime) };
+  }), [yearPropertyFiltered, allCategories, breakdownRegime]);
 
   const breakdownNet = useMemo(() => {
     let net = 0;
@@ -1906,20 +1978,40 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
   return (
     <div className="min-h-screen bg-[#EDEBDF] text-[#20211D]">
       <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-[#20211D]">Registre locatif</h1>
-            <p className="text-sm text-[#6B6858]">Saisie des loyers, emprunts et charges — export prêt pour Qlower.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button onClick={() => setPropertiesOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Mes biens"><Settings size={15} /><span className="hidden sm:inline">Mes biens</span></button>
-            <button onClick={() => setTenantsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Locataires"><Users size={15} /><span className="hidden sm:inline">Locataires</span></button>
-            <button onClick={() => setRegulOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Régularisation de charges"><Calculator size={15} /><span className="hidden sm:inline">Régul. charges</span></button>
-            <button onClick={() => setImportOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Importer un échéancier de prêt"><Upload size={15} /><span className="hidden sm:inline">Importer emprunt</span></button>
-            <button onClick={() => setInsuranceOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Assurance emprunteur"><ShieldCheck size={15} /><span className="hidden sm:inline">Assurance prêt</span></button>
-            <button onClick={() => setDocumentsOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-2.5 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Justificatifs"><FileText size={15} /><span className="hidden sm:inline">Justificatifs</span></button>
-            <button onClick={handleExport} className="flex items-center gap-1.5 rounded-lg border border-[#20211D] bg-[#20211D] px-2.5 py-2 text-sm font-medium text-[#F7F5EC] shadow-sm hover:bg-[#3A3B33]" aria-label="Exporter en CSV"><Download size={15} /><span className="hidden sm:inline">Exporter en CSV</span></button>
-            {showSignOut && <button onClick={onSignOut} className="flex items-center gap-1.5 rounded-lg border border-[#D6D2C0] bg-white px-3 py-2 text-sm text-[#5B5849] shadow-sm hover:bg-[#F7F5EC]" aria-label="Se déconnecter"><LogOut size={15} /></button>}
+        <div className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-br from-[#20211D] via-[#3A3B33] to-[#9A5B34] px-5 py-6 text-[#F7F5EC] shadow-md sm:px-7 sm:py-7">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/15"><Landmark size={22} /></span>
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight">Bailly</h1>
+                <p className="text-sm text-[#F7F5EC]/70">Registre locatif — LMNP réel &amp; revenus fonciers, export prêt pour Qlower</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <MenuButton
+                label="Gestion" icon={Settings} variant="dark"
+                items={[
+                  { label: "Mes biens", icon: Building2, onClick: () => setPropertiesOpen(true) },
+                  { label: "Locataires", icon: Users, onClick: () => setTenantsOpen(true) },
+                ]}
+              />
+              <MenuButton
+                label="Emprunts" icon={Landmark} variant="dark"
+                items={[
+                  { label: "Importer un échéancier", icon: Upload, hint: "Capital + intérêts", onClick: () => setImportOpen(true) },
+                  { label: "Assurance emprunteur", icon: ShieldCheck, hint: "Importer et répartir", onClick: () => setInsuranceOpen(true) },
+                ]}
+              />
+              <MenuButton
+                label="Outils" icon={Calculator} variant="dark"
+                items={[
+                  { label: "Régularisation de charges", icon: Calculator, onClick: () => setRegulOpen(true) },
+                  { label: "Justificatifs", icon: FileText, onClick: () => setDocumentsOpen(true) },
+                ]}
+              />
+              <button onClick={handleExport} className="flex items-center gap-1.5 rounded-lg bg-[#F7F5EC] px-3 py-2 text-sm font-medium text-[#20211D] shadow-sm hover:bg-white" aria-label="Exporter en CSV"><Download size={15} /><span className="hidden sm:inline">Exporter</span></button>
+              {showSignOut && <button onClick={onSignOut} className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/10 px-2.5 py-2 text-sm text-[#F7F5EC] shadow-sm hover:bg-white/20" aria-label="Se déconnecter"><LogOut size={15} /></button>}
+            </div>
           </div>
         </div>
 
@@ -1952,6 +2044,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
               <thead>
                 <tr className="border-b border-[#DEDAC9] bg-[#F7F5EC] text-left text-[#6B6858]">
                   <th className="px-4 py-2.5 font-medium">Type de saisie</th>
+                  <th className="px-4 py-2.5 font-medium">Case déclaration</th>
                   <th className="px-4 py-2.5 text-right font-medium">Nb saisies</th>
                   <th className="px-4 py-2.5 text-right font-medium">Montant total</th>
                 </tr>
@@ -1960,6 +2053,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
                 {categoryBreakdown.map((c) => (
                   <tr key={c.categorie} className={`border-b border-[#EFEDE0] last:border-0 ${c.count === 0 ? "text-[#B4B19E]" : ""}`}>
                     <td className="px-4 py-2 text-[#20211D]">{c.categorie}</td>
+                    <td className="px-4 py-2 text-xs text-[#8A876F]">{c.taxBox}</td>
                     <td className="whitespace-nowrap px-4 py-2 text-right font-mono tabular-nums text-[#5B5849]">{c.count}</td>
                     <td className={`whitespace-nowrap px-4 py-2 text-right font-mono tabular-nums ${c.count === 0 ? "text-[#B4B19E]" : c.isRecette ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>
                       {c.count === 0 ? "—" : formatCurrency(c.total)}
@@ -1969,13 +2063,16 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
               </tbody>
               <tfoot>
                 <tr className="border-t border-[#DEDAC9] bg-[#F7F5EC] font-medium">
-                  <td className="px-4 py-2.5 text-[#20211D]">Net de trésorerie</td>
+                  <td className="px-4 py-2.5 text-[#20211D]" colSpan={2}>Net de trésorerie</td>
                   <td className="whitespace-nowrap px-4 py-2.5 text-right text-[#6B6858]">{categoryBreakdown.reduce((s, c) => s + c.count, 0)}</td>
                   <td className={`whitespace-nowrap px-4 py-2.5 text-right font-mono tabular-nums ${breakdownNet >= 0 ? "text-[#3F6B4F]" : "text-[#A2432A]"}`}>{formatCurrency(breakdownNet)}</td>
                 </tr>
               </tfoot>
             </table>
           </div>
+          <p className="border-t border-[#EFEDE0] px-4 py-2.5 text-xs text-[#8A876F]">
+            Correspondances indicatives pour le régime réel (déclaration 2044) — à vérifier chaque année, les numéros de case pouvant légèrement changer. En LMNP réel, pas de case 2042 dédiée : les montants sont repris dans la liasse fiscale (formulaires 2031-2033), d'où le renvoi au poste comptable.
+          </p>
         </div>
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -2152,14 +2249,21 @@ function LoginScreen() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#EDEBDF] px-4">
-      <div className="w-full max-w-sm rounded-2xl border border-[#DEDAC9] bg-white p-7 text-center">
-        <div className="mb-5 flex items-center justify-center gap-2 text-[#20211D]"><Lock size={18} /><h1 className="text-lg font-semibold">Registre locatif</h1></div>
-        <p className="mb-5 text-sm text-[#6B6858]">Connexion requise pour accéder à tes données.</p>
+      <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-[#DEDAC9] bg-white text-center shadow-sm">
+        <div className="bg-gradient-to-br from-[#20211D] via-[#3A3B33] to-[#9A5B34] px-7 py-7 text-[#F7F5EC]">
+          <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-white/15"><Landmark size={24} /></span>
+          <h1 className="text-xl font-semibold tracking-tight">Bailly</h1>
+          <p className="mt-1 text-xs text-[#F7F5EC]/70">Registre locatif</p>
+        </div>
+        <div className="p-7">
+        <div className="mb-4 flex items-center justify-center gap-2 text-[#6B6858]"><Lock size={15} /><span className="text-sm">Connexion requise</span></div>
+        <p className="mb-5 text-sm text-[#6B6858]">Connecte-toi pour accéder à tes données.</p>
         {error && <p className="mb-3 text-sm text-[#A2432A]">{error}</p>}
         <button onClick={handleGoogleSignIn} disabled={loading}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#D6D2C0] bg-white px-4 py-2.5 text-sm font-medium text-[#20211D] hover:bg-[#F7F5EC] disabled:opacity-40">
           <GoogleG size={18} />{loading ? "Connexion…" : "Se connecter avec Google"}
         </button>
+        </div>
       </div>
     </div>
   );
