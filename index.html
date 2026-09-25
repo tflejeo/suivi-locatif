@@ -1538,7 +1538,11 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
   const [coproPeriodEnd, setCoproPeriodEnd] = useState("");
   const [chargesAppart, setChargesAppart] = useState("");
   const [chargesParking, setChargesParking] = useState("");
-  const [teomEntries, setTeomEntries] = useState([{ id: uid(), periodStart: "", periodEnd: "", montant: "" }]);
+  // Une entrée TEOM ne demande que l'année de l'avis (montant annuel entier de la taxe) : le
+  // sous-ensemble réellement facturé lors de CETTE régularisation est automatiquement limité à
+  // l'intersection de cette année civile avec la période de copro (voir prorateTeom ci-dessous) —
+  // le reste de l'année sera facturé lors de la régularisation suivante.
+  const [teomEntries, setTeomEntries] = useState([{ id: uid(), year: "", montant: "" }]);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -1548,12 +1552,12 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
   const num = (v) => Math.max(0, parseFloat(String(v).replace(",", ".")) || 0);
   const tenantsForProperty = useMemo(() => tenants.filter((t) => t.propertyId === propertyId), [tenants, propertyId]);
 
-  function addTeomEntry() { setTeomEntries((prev) => [...prev, { id: uid(), periodStart: "", periodEnd: "", montant: "" }]); }
+  function addTeomEntry() { setTeomEntries((prev) => [...prev, { id: uid(), year: "", montant: "" }]); }
   function updateTeomEntry(id, patch) { setTeomEntries((prev) => prev.map((te) => (te.id === id ? { ...te, ...patch } : te))); }
   function removeTeomEntry(id) { setTeomEntries((prev) => (prev.length > 1 ? prev.filter((te) => te.id !== id) : prev)); }
 
-  // Calcule, pour un poste de charge donné (copro OU une entrée TEOM), la quote-part de chaque
-  // locataire au prorata de ses jours de présence sur LA période propre à ce poste.
+  // Calcule la quote-part de chaque locataire pour les charges de copro, au prorata de ses jours
+  // de présence sur la période de l'exercice du syndic.
   function prorate(periodStart, periodEnd, totalAmount) {
     if (!periodStart || !periodEnd || periodEnd < periodStart || totalAmount <= 0) return null;
     const totalDays = daysBetweenInclusive(periodStart, periodEnd);
@@ -1570,6 +1574,33 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
     return { totalDays, totalAmount, byTenant };
   }
 
+  // Calcule la quote-part de chaque locataire pour un avis TEOM annuel donné. Le taux journalier
+  // se base sur l'année civile complète (365/366 j.), mais le nombre de jours réellement facturés
+  // est limité à l'intersection [année civile] ∩ [période de copro] ∩ [présence du locataire] :
+  // c'est ce qui évite de facturer d'un coup les 12 mois d'un avis qui déborde de la période de
+  // régularisation en cours — le reste sera repris à la régularisation suivante.
+  function prorateTeom(year, totalAmount, coproStart, coproEnd) {
+    const y = parseInt(year, 10);
+    if (!y || totalAmount <= 0) return null;
+    const yearStart = `${y}-01-01`, yearEnd = `${y}-12-31`;
+    const totalDaysYear = daysBetweenInclusive(yearStart, yearEnd);
+    const hasCoproPeriod = coproStart && coproEnd && coproEnd >= coproStart;
+    const billedStart = hasCoproPeriod ? maxISO(yearStart, coproStart) : yearStart;
+    const billedEnd = hasCoproPeriod ? minISO(yearEnd, coproEnd) : yearEnd;
+    if (billedStart > billedEnd) return null; // cet avis ne tombe pas dans la période de copro
+    const byTenant = {};
+    for (const t of tenantsForProperty) {
+      const tenantEnd = t.leaseEnd || billedEnd;
+      const overlapStart = maxISO(t.leaseStart, billedStart);
+      const overlapEnd = minISO(tenantEnd, billedEnd);
+      if (overlapStart > overlapEnd) continue;
+      const presenceDays = daysBetweenInclusive(overlapStart, overlapEnd);
+      const quotePart = totalDaysYear > 0 ? (totalAmount * presenceDays) / totalDaysYear : 0;
+      byTenant[t.id] = { overlapStart, overlapEnd, presenceDays, quotePart };
+    }
+    return { year: y, totalDaysYear, totalAmount, billedStart, billedEnd, byTenant };
+  }
+
   const coproCalc = useMemo(
     () => prorate(coproPeriodStart, coproPeriodEnd, num(chargesAppart) + num(chargesParking)),
     [coproPeriodStart, coproPeriodEnd, chargesAppart, chargesParking, tenantsForProperty]
@@ -1577,9 +1608,9 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
 
   const teomCalcs = useMemo(
     () => teomEntries
-      .map((te) => ({ id: te.id, periodStart: te.periodStart, periodEnd: te.periodEnd, calc: prorate(te.periodStart, te.periodEnd, num(te.montant)) }))
+      .map((te) => ({ id: te.id, calc: prorateTeom(te.year, num(te.montant), coproPeriodStart, coproPeriodEnd) }))
       .filter((x) => x.calc),
-    [teomEntries, tenantsForProperty]
+    [teomEntries, coproPeriodStart, coproPeriodEnd, tenantsForProperty]
   ); // eslint-disable-line react-hooks/exhaustive-deps
 
   const result = useMemo(() => {
@@ -1591,13 +1622,13 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
     // période, pouvant compter plusieurs avis distincts pour une seule période de copro.
     const provisionsPeriod = coproCalc
       ? { start: coproPeriodStart, end: coproPeriodEnd }
-      : (teomCalcs[0] ? { start: teomCalcs[0].periodStart, end: teomCalcs[0].periodEnd } : null);
+      : (teomCalcs[0] ? { start: teomCalcs[0].calc.billedStart, end: teomCalcs[0].calc.billedEnd } : null);
     if (!provisionsPeriod) return null;
     const rows = [];
     for (const t of tenantsForProperty) {
       const coproEntry = coproCalc?.byTenant[t.id];
       const teomBreakdown = teomCalcs
-        .map((tc) => ({ periodStart: tc.periodStart, periodEnd: tc.periodEnd, totalAmount: tc.calc.totalAmount, totalDays: tc.calc.totalDays, entry: tc.calc.byTenant[t.id] }))
+        .map((tc) => ({ year: tc.calc.year, billedStart: tc.calc.billedStart, billedEnd: tc.calc.billedEnd, totalAmount: tc.calc.totalAmount, totalDaysYear: tc.calc.totalDaysYear, entry: tc.calc.byTenant[t.id] }))
         .filter((b) => b.entry);
       if (!coproEntry && teomBreakdown.length === 0) continue;
       const coproQuotePart = coproEntry?.quotePart || 0;
@@ -1617,7 +1648,7 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
   function resetForm() {
     setEditingId(null);
     setCoproPeriodStart(""); setCoproPeriodEnd(""); setChargesAppart(""); setChargesParking("");
-    setTeomEntries([{ id: uid(), periodStart: "", periodEnd: "", montant: "" }]);
+    setTeomEntries([{ id: uid(), year: "", montant: "" }]);
     setSaved(false);
   }
 
@@ -1628,12 +1659,12 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
     setChargesAppart(h.chargesAppart != null ? String(h.chargesAppart) : "");
     setChargesParking(h.chargesParking != null ? String(h.chargesParking) : "");
     if (h.teomEntries && h.teomEntries.length > 0) {
-      setTeomEntries(h.teomEntries.map((te) => ({ id: uid(), periodStart: te.periodStart || "", periodEnd: te.periodEnd || "", montant: te.montant != null ? String(te.montant) : "" })));
+      setTeomEntries(h.teomEntries.map((te) => ({ id: uid(), year: te.year || (te.periodStart ? te.periodStart.slice(0, 4) : ""), montant: te.montant != null ? String(te.montant) : "" })));
     } else if (h.teomPeriodStart) {
-      // Compat avec l'ancien format à une seule entrée TEOM.
-      setTeomEntries([{ id: uid(), periodStart: h.teomPeriodStart, periodEnd: h.teomPeriodEnd || "", montant: h.chargesTeom != null ? String(h.chargesTeom) : "" }]);
+      // Compat avec l'ancien format à une seule entrée TEOM datée par période.
+      setTeomEntries([{ id: uid(), year: h.teomPeriodStart.slice(0, 4), montant: h.chargesTeom != null ? String(h.chargesTeom) : "" }]);
     } else {
-      setTeomEntries([{ id: uid(), periodStart: "", periodEnd: "", montant: "" }]);
+      setTeomEntries([{ id: uid(), year: "", montant: "" }]);
     }
     setEditingId(h.id);
     setSaved(false);
@@ -1642,8 +1673,8 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
   async function handleSave() {
     if (!result || result.rows.length === 0) return;
     const validTeomEntries = teomEntries
-      .filter((te) => te.periodStart && te.periodEnd && num(te.montant) > 0)
-      .map((te) => ({ periodStart: te.periodStart, periodEnd: te.periodEnd, montant: num(te.montant) }));
+      .filter((te) => te.year && num(te.montant) > 0)
+      .map((te) => ({ year: parseInt(te.year, 10), montant: num(te.montant) }));
     const payload = {
       propertyId,
       periodStart: result.provisionsPeriod.start, periodEnd: result.provisionsPeriod.end, // pour compat avec l'historique existant
@@ -1688,14 +1719,13 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
       </div>
 
       <div className="mt-3 rounded-lg border border-[#33311E] bg-[#1B1A15] p-3">
-        <h3 className="mb-2 text-sm font-medium text-[#C9C4AC]">Taxe ordures ménagères — TEOM (année civile de chaque avis)</h3>
-        <p className="mb-2 text-xs text-[#837D62]">Une période de copro à cheval sur deux années civiles peut couvrir deux avis de taxe foncière : ajoute une entrée par avis, chacune avec sa propre période et son propre prorata.</p>
+        <h3 className="mb-2 text-sm font-medium text-[#C9C4AC]">Taxe ordures ménagères — TEOM (montant annuel de chaque avis)</h3>
+        <p className="mb-2 text-xs text-[#837D62]">Indique juste l'année et le montant annuel de chaque avis. Le montant réellement facturé cette fois est calculé automatiquement, limité à la part de cette année civile comprise dans la période de copro ci-dessus — le reste sera repris à la prochaine régularisation.</p>
         <div className="space-y-2">
           {teomEntries.map((te, i) => (
-            <div key={te.id} className="grid grid-cols-2 gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
-              <Field label={`Début${teomEntries.length > 1 ? ` (avis ${i + 1})` : ""}`}><input type="date" className={inputClasses} value={te.periodStart} onChange={(e) => updateTeomEntry(te.id, { periodStart: e.target.value })} /></Field>
-              <Field label="Fin"><input type="date" className={inputClasses} value={te.periodEnd} onChange={(e) => updateTeomEntry(te.id, { periodEnd: e.target.value })} /></Field>
-              <Field label="Montant TEOM (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={te.montant} onChange={(e) => updateTeomEntry(te.id, { montant: e.target.value })} placeholder="185" /></Field>
+            <div key={te.id} className="grid grid-cols-2 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+              <Field label={`Année${teomEntries.length > 1 ? ` (avis ${i + 1})` : ""}`}><input type="number" inputMode="numeric" className={inputClasses} value={te.year} onChange={(e) => updateTeomEntry(te.id, { year: e.target.value })} placeholder="2026" /></Field>
+              <Field label="Montant annuel de l'avis (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={te.montant} onChange={(e) => updateTeomEntry(te.id, { montant: e.target.value })} placeholder="185" /></Field>
               <button type="button" onClick={() => removeTeomEntry(te.id)} disabled={teomEntries.length === 1} className="mb-0.5 h-[42px] rounded-lg border border-[#454227] px-2 text-[#E68A72] hover:bg-[#3A2019] disabled:cursor-not-allowed disabled:opacity-30" aria-label="Retirer cet avis"><Trash2 size={15} /></button>
             </div>
           ))}
@@ -1727,7 +1757,7 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
               <div className="mt-1 space-y-0.5 text-xs text-[#837D62]">
                 {r.coproEntry && <div>Copro : présence {r.coproEntry.presenceDays} j. / {coproCalc.totalDays} j. de la période ({formatDateForDisplay(r.coproEntry.overlapStart)} → {formatDateForDisplay(r.coproEntry.overlapEnd)}) → prorata {formatCurrency(r.coproQuotePart)} sur {formatCurrency(coproCalc.totalAmount)}</div>}
                 {r.teomBreakdown.map((b, bi) => (
-                  <div key={bi}>TEOM{r.teomBreakdown.length > 1 ? ` (avis ${formatDateForDisplay(b.periodStart)} → ${formatDateForDisplay(b.periodEnd)})` : ""} : présence {b.entry.presenceDays} j. / {b.totalDays} j. de la période ({formatDateForDisplay(b.entry.overlapStart)} → {formatDateForDisplay(b.entry.overlapEnd)}) → prorata {formatCurrency(b.entry.quotePart)} sur {formatCurrency(b.totalAmount)} (hors provisions, à déduire)</div>
+                  <div key={bi}>TEOM {b.year} : présence {b.entry.presenceDays} j. / {b.totalDaysYear} j. de l'année {b.year}, facturée dans la limite de la copro ({formatDateForDisplay(b.entry.overlapStart)} → {formatDateForDisplay(b.entry.overlapEnd)}) → prorata {formatCurrency(b.entry.quotePart)} sur {formatCurrency(b.totalAmount)} annuel</div>
                 ))}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
@@ -1771,7 +1801,7 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
                       {h.coproPeriodStart && <>Copro {formatDateForDisplay(h.coproPeriodStart)} → {formatDateForDisplay(h.coproPeriodEnd)}</>}
                       {h.coproPeriodStart && ((h.teomEntries && h.teomEntries.length > 0) || h.teomPeriodStart) && " · "}
                       {h.teomEntries && h.teomEntries.length > 0 && (
-                        <>{h.teomEntries.length > 1 ? `${h.teomEntries.length} avis TEOM` : <>TEOM {formatDateForDisplay(h.teomEntries[0].periodStart)} → {formatDateForDisplay(h.teomEntries[0].periodEnd)}</>}</>
+                        <>{h.teomEntries.length > 1 ? `TEOM ${h.teomEntries.map((te) => te.year).join(" + ")}` : (h.teomEntries[0].year ? `TEOM ${h.teomEntries[0].year}` : <>TEOM {formatDateForDisplay(h.teomEntries[0].periodStart)} → {formatDateForDisplay(h.teomEntries[0].periodEnd)}</>)}</>
                       )}
                       {(!h.teomEntries || h.teomEntries.length === 0) && h.teomPeriodStart && <>TEOM {formatDateForDisplay(h.teomPeriodStart)} → {formatDateForDisplay(h.teomPeriodEnd)}</>}
                       {!h.coproPeriodStart && !h.teomPeriodStart && (!h.teomEntries || h.teomEntries.length === 0) && <>{formatDateForDisplay(h.periodStart)} → {formatDateForDisplay(h.periodEnd)}</>}
