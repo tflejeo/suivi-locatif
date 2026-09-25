@@ -1522,10 +1522,14 @@ function DocumentsModal({ open, onClose, documents, properties, onAdd, onDelete 
  * ==========================================================================*/
 function ChargeRegulModal({ open, onClose, properties, tenants, transactions, regularisations, onSave, onDelete }) {
   const [propertyId, setPropertyId] = useState(properties[0]?.id || "");
-  const [periodStart, setPeriodStart] = useState("");
-  const [periodEnd, setPeriodEnd] = useState("");
+  // La période de la copro (exercice du syndic) et celle de la taxe foncière/TEOM (année civile)
+  // ne coïncident généralement pas : chacune a donc son propre prorata, calculé indépendamment.
+  const [coproPeriodStart, setCoproPeriodStart] = useState("");
+  const [coproPeriodEnd, setCoproPeriodEnd] = useState("");
   const [chargesAppart, setChargesAppart] = useState("");
   const [chargesParking, setChargesParking] = useState("");
+  const [teomPeriodStart, setTeomPeriodStart] = useState("");
+  const [teomPeriodEnd, setTeomPeriodEnd] = useState("");
   const [chargesTeom, setChargesTeom] = useState("");
   const [saved, setSaved] = useState(false);
 
@@ -1534,41 +1538,75 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
   }, [open, properties]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const num = (v) => Math.max(0, parseFloat(String(v).replace(",", ".")) || 0);
+  const tenantsForProperty = useMemo(() => tenants.filter((t) => t.propertyId === propertyId), [tenants, propertyId]);
 
-  const result = useMemo(() => {
-    if (!propertyId || !periodStart || !periodEnd || periodEnd < periodStart) return null;
+  // Calcule, pour un poste de charge donné (copro OU TEOM), la quote-part de chaque locataire
+  // au prorata de ses jours de présence sur LA période propre à ce poste.
+  function prorate(periodStart, periodEnd, totalAmount) {
+    if (!periodStart || !periodEnd || periodEnd < periodStart || totalAmount <= 0) return null;
     const totalDays = daysBetweenInclusive(periodStart, periodEnd);
-    const totalCharges = num(chargesAppart) + num(chargesParking) + num(chargesTeom);
-    const tenantsForProperty = tenants.filter((t) => t.propertyId === propertyId);
-    const rows = [];
+    const byTenant = {};
     for (const t of tenantsForProperty) {
       const tenantEnd = t.leaseEnd || periodEnd;
       const overlapStart = maxISO(t.leaseStart, periodStart);
       const overlapEnd = minISO(tenantEnd, periodEnd);
-      if (overlapStart > overlapEnd) continue; // pas de présence sur la période
+      if (overlapStart > overlapEnd) continue; // pas de présence sur cette période
       const presenceDays = daysBetweenInclusive(overlapStart, overlapEnd);
-      const quotePart = totalDays > 0 ? (totalCharges * presenceDays) / totalDays : 0;
+      const quotePart = totalDays > 0 ? (totalAmount * presenceDays) / totalDays : 0;
+      byTenant[t.id] = { overlapStart, overlapEnd, presenceDays, quotePart };
+    }
+    return { totalDays, totalAmount, byTenant };
+  }
+
+  const coproCalc = useMemo(
+    () => prorate(coproPeriodStart, coproPeriodEnd, num(chargesAppart) + num(chargesParking)),
+    [coproPeriodStart, coproPeriodEnd, chargesAppart, chargesParking, tenantsForProperty]
+  ); // eslint-disable-line react-hooks/exhaustive-deps
+  const teomCalc = useMemo(
+    () => prorate(teomPeriodStart, teomPeriodEnd, num(chargesTeom)),
+    [teomPeriodStart, teomPeriodEnd, chargesTeom, tenantsForProperty]
+  ); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const result = useMemo(() => {
+    if (!propertyId || (!coproCalc && !teomCalc)) return null;
+    // Les provisions versées par le locataire ne sont pas itemisées par poste de charge : on les
+    // compare donc une seule fois, sur la période qui englobe les deux postes actifs, pour éviter
+    // de les compter deux fois si les deux périodes se chevauchent.
+    const starts = [coproCalc?.totalDays ? coproPeriodStart : null, teomCalc?.totalDays ? teomPeriodStart : null].filter(Boolean);
+    const ends = [coproCalc?.totalDays ? coproPeriodEnd : null, teomCalc?.totalDays ? teomPeriodEnd : null].filter(Boolean);
+    if (starts.length === 0) return null;
+    const unionStart = starts.reduce((a, b) => minISO(a, b));
+    const unionEnd = ends.reduce((a, b) => maxISO(a, b));
+    const rows = [];
+    for (const t of tenantsForProperty) {
+      const coproEntry = coproCalc?.byTenant[t.id];
+      const teomEntry = teomCalc?.byTenant[t.id];
+      if (!coproEntry && !teomEntry) continue;
+      const quotePart = (coproEntry?.quotePart || 0) + (teomEntry?.quotePart || 0);
       const provisionsPaid = transactions
-        .filter((x) => x.tenantId === t.id && x.categorie === CAT.PROVISIONS && x.date >= periodStart && x.date <= periodEnd)
+        .filter((x) => x.tenantId === t.id && x.categorie === CAT.PROVISIONS && x.date >= unionStart && x.date <= unionEnd)
         .reduce((s, x) => s + x.montant, 0);
       const solde = provisionsPaid - quotePart;
-      rows.push({ tenant: t, overlapStart, overlapEnd, presenceDays, quotePart, provisionsPaid, solde });
+      rows.push({ tenant: t, coproEntry, teomEntry, quotePart, provisionsPaid, solde });
     }
-    return { totalDays, totalCharges, rows };
-  }, [propertyId, periodStart, periodEnd, chargesAppart, chargesParking, chargesTeom, tenants, transactions]);
+    return { unionStart, unionEnd, totalCharges: (coproCalc?.totalAmount || 0) + (teomCalc?.totalAmount || 0), rows };
+  }, [propertyId, coproCalc, teomCalc, coproPeriodStart, coproPeriodEnd, teomPeriodStart, teomPeriodEnd, tenantsForProperty, transactions]);
 
-  useEffect(() => { setSaved(false); }, [propertyId, periodStart, periodEnd, chargesAppart, chargesParking, chargesTeom]);
+  useEffect(() => { setSaved(false); }, [propertyId, coproPeriodStart, coproPeriodEnd, chargesAppart, chargesParking, teomPeriodStart, teomPeriodEnd, chargesTeom]);
 
   async function handleSave() {
     if (!result || result.rows.length === 0) return;
     await onSave({
-      propertyId, periodStart, periodEnd,
+      propertyId,
+      periodStart: result.unionStart, periodEnd: result.unionEnd, // pour compat avec l'historique existant
+      coproPeriodStart: coproCalc ? coproPeriodStart : null, coproPeriodEnd: coproCalc ? coproPeriodEnd : null,
+      teomPeriodStart: teomCalc ? teomPeriodStart : null, teomPeriodEnd: teomCalc ? teomPeriodEnd : null,
       chargesAppart: num(chargesAppart), chargesParking: num(chargesParking), chargesTeom: num(chargesTeom),
       chargesReelles: result.totalCharges,
       createdAt: today(),
       rows: result.rows.map((r) => ({
         tenantId: r.tenant.id, tenantName: r.tenant.name,
-        overlapStart: r.overlapStart, overlapEnd: r.overlapEnd, presenceDays: r.presenceDays,
+        coproQuotePart: r.coproEntry?.quotePart || 0, teomQuotePart: r.teomEntry?.quotePart || 0,
         quotePart: r.quotePart, provisionsPaid: r.provisionsPaid, solde: r.solde,
       })),
     });
@@ -1581,54 +1619,58 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
 
   return (
     <Modal open={open} onClose={onClose} title="Régularisation de charges annuelles" wide>
-      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="col-span-2 sm:col-span-1">
-          <Field label="Bien">
-            <select className={inputClasses} value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
-              {properties.length === 0 && <option value="">Ajoute un bien d'abord</option>}
-              {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </Field>
+      <Field label="Bien">
+        <select className={inputClasses} value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
+          {properties.length === 0 && <option value="">Ajoute un bien d'abord</option>}
+          {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </Field>
+
+      <div className="mt-4 rounded-lg border border-[#33311E] bg-[#1B1A15] p-3">
+        <h3 className="mb-2 text-sm font-medium text-[#C9C4AC]">Charges de copropriété (exercice du syndic)</h3>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Field label="Début"><input type="date" className={inputClasses} value={coproPeriodStart} onChange={(e) => setCoproPeriodStart(e.target.value)} /></Field>
+          <Field label="Fin"><input type="date" className={inputClasses} value={coproPeriodEnd} onChange={(e) => setCoproPeriodEnd(e.target.value)} /></Field>
+          <Field label="Appartement (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesAppart} onChange={(e) => setChargesAppart(e.target.value)} placeholder="1100" /></Field>
+          <Field label="Parking (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesParking} onChange={(e) => setChargesParking(e.target.value)} placeholder="100" /></Field>
         </div>
-        <Field label="Début de période">
-          <input type="date" className={inputClasses} value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
-        </Field>
-        <Field label="Fin de période">
-          <input type="date" className={inputClasses} value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
-        </Field>
-        <Field label="Charges réelles — Appartement (€)">
-          <input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesAppart} onChange={(e) => setChargesAppart(e.target.value)} placeholder="1100" />
-        </Field>
-        <Field label="Charges réelles — Parking (€)">
-          <input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesParking} onChange={(e) => setChargesParking(e.target.value)} placeholder="100" />
-        </Field>
-        <Field label="Taxe ordures ménagères — TEOM (€)">
-          <input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesTeom} onChange={(e) => setChargesTeom(e.target.value)} placeholder="185" />
-        </Field>
       </div>
-      {(num(chargesAppart) > 0 || num(chargesParking) > 0 || num(chargesTeom) > 0) && (
-        <p className="-mt-3 mb-5 text-xs text-[#837D62]">Total charges réelles retenu (dont TEOM) : <span className="font-mono tabular-nums">{formatCurrency(num(chargesAppart) + num(chargesParking) + num(chargesTeom))}</span></p>
-      )}
+
+      <div className="mt-3 rounded-lg border border-[#33311E] bg-[#1B1A15] p-3">
+        <h3 className="mb-2 text-sm font-medium text-[#C9C4AC]">Taxe ordures ménagères — TEOM (année civile de l'avis)</h3>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Field label="Début"><input type="date" className={inputClasses} value={teomPeriodStart} onChange={(e) => setTeomPeriodStart(e.target.value)} /></Field>
+          <Field label="Fin"><input type="date" className={inputClasses} value={teomPeriodEnd} onChange={(e) => setTeomPeriodEnd(e.target.value)} /></Field>
+          <div className="col-span-2 sm:col-span-2">
+            <Field label="Montant TEOM (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargesTeom} onChange={(e) => setChargesTeom(e.target.value)} placeholder="185" /></Field>
+          </div>
+        </div>
+      </div>
 
       {!result && (
-        <p className="text-sm text-[#837D62]">Renseigne le bien, la période et le montant des charges réelles pour calculer la régularisation.</p>
+        <p className="mt-4 text-sm text-[#837D62]">Renseigne au moins un des deux postes (copro et/ou TEOM) avec sa période et son montant pour calculer la régularisation.</p>
       )}
 
       {result && result.rows.length === 0 && (
-        <p className="text-sm text-[#837D62]">Aucun locataire présent sur cette période pour ce bien.</p>
+        <p className="mt-4 text-sm text-[#837D62]">Aucun locataire présent sur ces périodes pour ce bien.</p>
       )}
 
       {result && result.rows.length > 0 && (
-        <div className="space-y-3">
-          <p className="text-xs text-[#837D62]">Période : {result.totalDays} jour(s) · Charges réelles totales : {formatCurrency(result.totalCharges)}. La quote-part de chaque locataire est calculée au prorata de ses jours de présence sur la période.</p>
+        <div className="mt-4 space-y-3">
+          <p className="text-xs text-[#837D62]">
+            Chaque poste est proratisé sur sa propre période. Les provisions payées sont comparées une seule fois, sur l'ensemble {formatDateForDisplay(result.unionStart)} → {formatDateForDisplay(result.unionEnd)}, pour éviter un double comptage.
+          </p>
           {result.rows.map((r) => (
             <div key={r.tenant.id} className="rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3">
               <div className="flex items-center justify-between">
                 <span className="text-[#F1EEE2]">{r.tenant.name}</span>
-                <span className="text-xs text-[#837D62]">{formatDateForDisplay(r.overlapStart)} → {formatDateForDisplay(r.overlapEnd)} ({r.presenceDays} j.)</span>
+              </div>
+              <div className="mt-1 space-y-0.5 text-xs text-[#837D62]">
+                {r.coproEntry && <div>Copro : {formatDateForDisplay(r.coproEntry.overlapStart)} → {formatDateForDisplay(r.coproEntry.overlapEnd)} ({r.coproEntry.presenceDays} j.) → {formatCurrency(r.coproEntry.quotePart)}</div>}
+                {r.teomEntry && <div>TEOM : {formatDateForDisplay(r.teomEntry.overlapStart)} → {formatDateForDisplay(r.teomEntry.overlapEnd)} ({r.teomEntry.presenceDays} j.) → {formatCurrency(r.teomEntry.quotePart)}</div>}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-                <div><span className="text-[#837D62]">Quote-part réelle</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.quotePart)}</div></div>
+                <div><span className="text-[#837D62]">Total dû (copro + TEOM)</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.quotePart)}</div></div>
                 <div><span className="text-[#837D62]">Provisions payées</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.provisionsPaid)}</div></div>
                 <div>
                   <span className="text-[#837D62]">{r.solde >= 0 ? "À rembourser au locataire" : "Complément à réclamer"}</span>
@@ -1654,7 +1696,12 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
               <div key={h.id} className="rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="text-sm text-[#F1EEE2]">{formatDateForDisplay(h.periodStart)} → {formatDateForDisplay(h.periodEnd)}</div>
+                    <div className="text-sm text-[#F1EEE2]">
+                      {h.coproPeriodStart && <>Copro {formatDateForDisplay(h.coproPeriodStart)} → {formatDateForDisplay(h.coproPeriodEnd)}</>}
+                      {h.coproPeriodStart && h.teomPeriodStart && " · "}
+                      {h.teomPeriodStart && <>TEOM {formatDateForDisplay(h.teomPeriodStart)} → {formatDateForDisplay(h.teomPeriodEnd)}</>}
+                      {!h.coproPeriodStart && !h.teomPeriodStart && <>{formatDateForDisplay(h.periodStart)} → {formatDateForDisplay(h.periodEnd)}</>}
+                    </div>
                     <div className="text-xs text-[#837D62]">
                       Charges réelles : {formatCurrency(h.chargesReelles)}
                       {(h.chargesAppart != null || h.chargesParking != null || h.chargesTeom != null) && ` (Appart. ${formatCurrency(h.chargesAppart || 0)} + Parking ${formatCurrency(h.chargesParking || 0)}${h.chargesTeom ? ` + TEOM ${formatCurrency(h.chargesTeom)}` : ""})`}
