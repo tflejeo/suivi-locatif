@@ -1747,7 +1747,7 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
             <p className="rounded-md border border-[#9A5B34]/50 bg-[#9A5B34]/10 px-3 py-1.5 text-xs text-[#E0A164]">Modification de la régularisation enregistrée — "Mettre à jour" remplacera ses valeurs.</p>
           )}
           <p className="text-xs text-[#837D62]">
-            Les provisions du locataire couvrent les charges de copropriété : elles sont comparées à la quote-part copro sur la période {formatDateForDisplay(result.provisionsPeriod.start)} → {formatDateForDisplay(result.provisionsPeriod.end)}. Le TEOM, proratisé sur sa propre période, n'est pas couvert par ces provisions : il est facturé/déduit en plus.
+            Les provisions du locataire sont comparées aux charges réelles de copropriété et à la taxe d'ordures ménagères, chacune proratisée sur sa propre période, sur l'ensemble de la période {formatDateForDisplay(result.provisionsPeriod.start)} → {formatDateForDisplay(result.provisionsPeriod.end)}.
           </p>
           {result.rows.map((r) => (
             <div key={r.tenant.id} className="rounded-lg border border-[#33311E] bg-[#242316] px-4 py-3">
@@ -1757,13 +1757,13 @@ function ChargeRegulModal({ open, onClose, properties, tenants, transactions, re
               <div className="mt-1 space-y-0.5 text-xs text-[#837D62]">
                 {r.coproEntry && <div>Copro : présence {r.coproEntry.presenceDays} j. / {coproCalc.totalDays} j. de la période ({formatDateForDisplay(r.coproEntry.overlapStart)} → {formatDateForDisplay(r.coproEntry.overlapEnd)}) → prorata {formatCurrency(r.coproQuotePart)} sur {formatCurrency(coproCalc.totalAmount)}</div>}
                 {r.teomBreakdown.map((b, bi) => (
-                  <div key={bi}>TEOM {b.year} : présence {b.entry.presenceDays} j. / {b.totalDaysYear} j. de l'année {b.year}, facturée dans la limite de la copro ({formatDateForDisplay(b.entry.overlapStart)} → {formatDateForDisplay(b.entry.overlapEnd)}) → prorata {formatCurrency(b.entry.quotePart)} sur {formatCurrency(b.totalAmount)} annuel</div>
+                  <div key={bi}>TEOM {b.year} : présence {b.entry.presenceDays} j. / {b.totalDaysYear} j. de l'année {b.year} → prorata {formatCurrency(b.entry.quotePart)} sur {formatCurrency(b.totalAmount)} annuel</div>
                 ))}
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-                <div><span className="text-[#837D62]">Provisions payées (copro)</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.provisionsPaid)}</div></div>
+                <div><span className="text-[#837D62]">Provisions payées</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.provisionsPaid)}</div></div>
                 <div><span className="text-[#837D62]">Quote-part copro (prorata)</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.coproQuotePart)}</div></div>
-                {r.teomQuotePart > 0 && <div><span className="text-[#837D62]">TEOM à déduire (total prorata{r.teomBreakdown.length > 1 ? `, ${r.teomBreakdown.length} avis` : ""})</span><div className="font-mono tabular-nums text-[#E68A72]">−{formatCurrency(r.teomQuotePart)}</div></div>}
+                {r.teomQuotePart > 0 && <div><span className="text-[#837D62]">TEOM (prorata{r.teomBreakdown.length > 1 ? `, ${r.teomBreakdown.length} avis` : ""})</span><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(r.teomQuotePart)}</div></div>}
                 <div>
                   <span className="text-[#837D62]">{r.solde >= 0 ? "À rembourser au locataire" : "Complément à réclamer"}</span>
                   <div className={`font-mono tabular-nums ${r.solde >= 0 ? "text-[#7BC99A]" : "text-[#E68A72]"}`}>{formatCurrency(Math.abs(r.solde))}</div>
@@ -1865,6 +1865,8 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
   const [regulComplement, setRegulComplement] = useState("");
   const [regulRemboursement, setRegulRemboursement] = useState("");
   const [chargeLibelle, setChargeLibelle] = useState("");
+  const [isMultiple, setIsMultiple] = useState(false);
+  const [multiEndDate, setMultiEndDate] = useState("");
 
   const tenantsForProperty = useMemo(() => tenants.filter((t) => t.propertyId === propertyId), [tenants, propertyId]);
 
@@ -1890,14 +1892,41 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
       setRegulComplement(editingGroup.regulComplement ?? "");
       setRegulRemboursement(editingGroup.regulRemboursement ?? "");
       setChargeLibelle(editingGroup.chargeLibelle ?? "");
+      setIsMultiple(false);
+      setMultiEndDate("");
     } else {
       setTab("LOYER");
       setDate(today());
       if (!propertyId && properties[0]) setPropertyId(properties[0].id);
       setTenantTouched(false);
+      setIsMultiple(false);
+      setMultiEndDate("");
       resetAll();
     }
   }, [open, editingGroup]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ajoute n mois à une date ISO, en calant le jour sur le dernier jour du mois d'arrivée s'il
+  // n'existe pas (ex. 31 janvier + 1 mois → 28/29 février).
+  function addMonthsISO(iso, n) {
+    const [y, m, d] = iso.split("-").map(Number);
+    const totalMonth = (m - 1) + n;
+    const newY = y + Math.floor(totalMonth / 12);
+    const newM = ((totalMonth % 12) + 12) % 12;
+    const daysInMonth = new Date(Date.UTC(newY, newM + 1, 0)).getUTCDate();
+    const newD = Math.min(d, daysInMonth);
+    return `${newY}-${String(newM + 1).padStart(2, "0")}-${String(newD).padStart(2, "0")}`;
+  }
+  // Liste des dates mensuelles (même jour du mois que le départ) de startIso jusqu'à endIso inclus.
+  function monthlyDatesBetween(startIso, endIso) {
+    if (!startIso || !endIso || endIso < startIso) return [startIso];
+    const dates = [];
+    for (let i = 0; i < 600; i++) {
+      const d = addMonthsISO(startIso, i);
+      if (d > endIso) break;
+      dates.push(d);
+    }
+    return dates.length > 0 ? dates : [startIso];
+  }
 
   // Initialise automatiquement le locataire dont le bail est en cours pour ce bien à cette date,
   // tant que l'utilisateur n'a pas choisi un autre locataire lui-même.
@@ -1913,12 +1942,9 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
 
   function resetAll() { setLoyerHC(""); setProvisions(""); setCapital(""); setInterets(""); setAssurance(""); setChargeMontant(""); setChargeMontantAppart(""); setChargeMontantParking(""); setTaxeFonciereTotal(""); setTaxeFonciereTeom(""); setRegulComplement(""); setRegulRemboursement(""); setChargeLibelle(""); }
 
-  async function submit(e) {
-    e.preventDefault();
-    if (!propertyId) return;
+  // Construit les lignes d'une opération pour UNE date donnée (même logique quel que soit l'onglet).
+  function buildRowsForBase(base) {
     const property = properties.find((p) => p.id === propertyId);
-    const groupId = uid();
-    const base = { date, propertyId, groupId };
     let rows = [];
     if (tab === "LOYER") {
       if (num(loyerHC) > 0) rows.push({ ...base, categorie: CAT.LOYER_HC, libelle: `Loyer ${property?.name || ""}`.trim(), montant: num(loyerHC), typeOperation: "Recette", tenantId: tenantId || null });
@@ -1949,9 +1975,22 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
         rows.push({ ...base, categorie: chargeCategorie, libelle: chargeLibelle.trim(), montant: num(chargeMontant), typeOperation: "Depense" });
       }
     }
+    return rows;
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!propertyId) return;
+    const dates = isMultiple && !isEditing ? monthlyDatesBetween(date, multiEndDate) : [date];
+    let rows = [];
+    for (const d of dates) {
+      rows = rows.concat(buildRowsForBase({ date: d, propertyId, groupId: uid() }));
+    }
     if (rows.length === 0) return;
     await onSubmitGroup(rows, isEditing ? editingGroup.groupId : null);
     resetAll();
+    setIsMultiple(false);
+    setMultiEndDate("");
     onClose();
   }
 
@@ -1980,6 +2019,25 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
             </select>
           </Field>
         </div>
+
+        {!isEditing && (
+          <div className="rounded-lg border border-[#33311E] bg-[#1B1A15] p-3">
+            <label className="flex items-center gap-2 text-sm text-[#C9C4AC]">
+              <input type="checkbox" checked={isMultiple} onChange={(e) => setIsMultiple(e.target.checked)} className="h-4 w-4 rounded border-[#454227] bg-[#17160F] accent-[#9A5B34]" />
+              Saisie multiple — répéter cette opération chaque mois (mêmes montants) jusqu'à une date de fin
+            </label>
+            {isMultiple && (
+              <div className="mt-2">
+                <Field label="Jusqu'au (inclus)">
+                  <input type="date" className={inputClasses} value={multiEndDate} onChange={(e) => setMultiEndDate(e.target.value)} min={date} required={isMultiple} />
+                </Field>
+                {multiEndDate && multiEndDate >= date && (
+                  <p className="mt-1 text-xs text-[#837D62]">{monthlyDatesBetween(date, multiEndDate).length} saisies mensuelles seront créées, du {formatDateForDisplay(date)} au {formatDateForDisplay(monthlyDatesBetween(date, multiEndDate).slice(-1)[0])} (même jour du mois).</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {tab === "LOYER" && (
           <>
