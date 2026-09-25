@@ -822,11 +822,12 @@ function useLedgerStore() {
   const [transactions, setTransactions] = useState(() => readLocal("rel_transactions", []));
   const [regularisations, setRegularisations] = useState(() => readLocal("rel_regularisations", []));
   const [documents, setDocuments] = useState(() => readLocal("rel_documents", []));
+  const [comments, setComments] = useState(() => readLocal("rel_comments", []));
   const [ready, setReady] = useState(!FIREBASE_ENABLED);
 
   useEffect(() => {
     if (!FIREBASE_ENABLED) return;
-    let unsubProps = () => {}; let unsubTenants = () => {}; let unsubTx = () => {}; let unsubRegul = () => {}; let unsubDocs = () => {};
+    let unsubProps = () => {}; let unsubTenants = () => {}; let unsubTx = () => {}; let unsubRegul = () => {}; let unsubDocs = () => {}; let unsubComments = () => {};
     (async () => {
       const api = await getFirestoreApi();
       const propsQuery = api.query(api.collection(api.db, "properties"));
@@ -839,15 +840,18 @@ function useLedgerStore() {
       unsubRegul = api.onSnapshot(regulQuery, (snap) => setRegularisations(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
       const docsQuery = api.query(api.collection(api.db, "documents"));
       unsubDocs = api.onSnapshot(docsQuery, (snap) => setDocuments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+      const commentsQuery = api.query(api.collection(api.db, "comments"));
+      unsubComments = api.onSnapshot(commentsQuery, (snap) => setComments(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
       setReady(true);
     })();
-    return () => { unsubProps(); unsubTenants(); unsubTx(); unsubRegul(); unsubDocs(); };
+    return () => { unsubProps(); unsubTenants(); unsubTx(); unsubRegul(); unsubDocs(); unsubComments(); };
   }, []);
 
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_properties", JSON.stringify(properties)); }, [properties]);
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_tenants", JSON.stringify(tenants)); }, [tenants]);
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_transactions", JSON.stringify(transactions)); }, [transactions]);
   useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_regularisations", JSON.stringify(regularisations)); }, [regularisations]);
+  useEffect(() => { if (!FIREBASE_ENABLED) window.localStorage.setItem("rel_comments", JSON.stringify(comments)); }, [comments]);
   useEffect(() => {
     if (!FIREBASE_ENABLED) {
       try { window.localStorage.setItem("rel_documents", JSON.stringify(documents)); }
@@ -933,8 +937,29 @@ function useLedgerStore() {
     if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.deleteDoc(api.doc(api.db, "documents", docItem.id)); }
     else setDocuments((prev) => prev.filter((d) => d.id !== docItem.id));
   }, []);
+  // Un commentaire est unique par (bien, année) : on crée ou on met à jour selon qu'il en existe
+  // déjà un pour cette combinaison, plutôt que de dupliquer une ligne à chaque sauvegarde.
+  const saveComment = useCallback(async (propertyId, year, text) => {
+    const existing = comments.find((c) => c.propertyId === propertyId && String(c.year) === String(year));
+    const trimmed = text.trim();
+    if (!existing && !trimmed) return; // rien à créer pour un commentaire vide
+    if (existing && !trimmed) {
+      // Commentaire vidé : on supprime la ligne plutôt que de garder une ligne vide.
+      if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.deleteDoc(api.doc(api.db, "comments", existing.id)); }
+      else setComments((prev) => prev.filter((c) => c.id !== existing.id));
+      return;
+    }
+    const patch = { propertyId, year: String(year), text: trimmed, updatedAt: new Date().toISOString() };
+    if (existing) {
+      if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.updateDoc(api.doc(api.db, "comments", existing.id), patch); }
+      else setComments((prev) => prev.map((c) => (c.id === existing.id ? { ...c, ...patch } : c)));
+    } else {
+      if (FIREBASE_ENABLED) { const api = await getFirestoreApi(); await api.addDoc(api.collection(api.db, "comments"), patch); }
+      else setComments((prev) => [...prev, { id: uid(), ...patch }]);
+    }
+  }, [comments]);
 
-  return { ready, properties, tenants, transactions, regularisations, documents, addProperty, updateProperty, deleteProperty, addTenant, updateTenant, deleteTenant, addTransactions, updateTransaction, deleteTransaction, deleteTransactionGroup, addRegularisation, updateRegularisation, deleteRegularisation, addDocument, deleteDocument };
+  return { ready, properties, tenants, transactions, regularisations, documents, comments, addProperty, updateProperty, deleteProperty, addTenant, updateTenant, deleteTenant, addTransactions, updateTransaction, deleteTransaction, deleteTransactionGroup, addRegularisation, updateRegularisation, deleteRegularisation, addDocument, deleteDocument, saveComment };
 }
 
 /* ============================================================================
@@ -2130,6 +2155,61 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
 }
 
 /* ============================================================================
+ * COMMENTAIRE PAR BIEN + ANNÉE
+ * ==========================================================================*/
+function CommentBox({ propertyId, propertyName, year, comments, onSave }) {
+  const existing = useMemo(
+    () => comments.find((c) => c.propertyId === propertyId && String(c.year) === String(year)),
+    [comments, propertyId, year]
+  );
+  const [text, setText] = useState(existing?.text || "");
+  const [saved, setSaved] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setText(existing?.text || ""); setSaved(true); }, [propertyId, year]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleSave() {
+    setSaving(true);
+    await onSave(propertyId, year, text);
+    setSaving(false);
+    setSaved(true);
+  }
+
+  if (propertyId === "ALL" || year === "ALL") {
+    return (
+      <div className="mb-6 rounded-2xl border border-[#33311E] bg-[#242316]/80 p-4 text-sm text-[#837D62]">
+        Sélectionne un bien précis et une année précise ci-dessus pour ajouter ou consulter un commentaire.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-6 rounded-2xl border border-[#33311E] bg-[#242316]/80 p-4 shadow-sm">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-medium text-[#C9C4AC]">Commentaire — {propertyName} {year}</h3>
+        <div className="flex items-center gap-2">
+          {saved ? (
+            existing?.updatedAt && <span className="text-xs text-[#837D62]">Enregistré le {formatDateForDisplay(existing.updatedAt.slice(0, 10))}</span>
+          ) : (
+            <span className="text-xs text-[#E0A164]">Modifications non enregistrées</span>
+          )}
+          <button type="button" onClick={handleSave} disabled={saved || saving} className="rounded-lg bg-[#9A5B34] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#B4703F] disabled:opacity-40">
+            {saving ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </div>
+      </div>
+      <textarea
+        className="w-full rounded-lg border border-[#454227] bg-[#17160F] px-3 py-2 text-sm text-[#F1EEE2] placeholder:text-[#5C573F] focus:border-[#9A5B34] focus:outline-none focus:ring-1 focus:ring-[#9A5B34]"
+        rows={3}
+        value={text}
+        onChange={(e) => { setText(e.target.value); setSaved(false); }}
+        placeholder="Ex. Relance faite pour l'avis de taxe foncière, en attente de retour du syndic sur le décompte T4…"
+      />
+    </div>
+  );
+}
+
+/* ============================================================================
  * APPLICATION PRINCIPALE
  * ==========================================================================*/
 function RealEstateLedger({ onSignOut, showSignOut }) {
@@ -2342,6 +2422,14 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
             </div>
           </div>
         </div>
+
+        <CommentBox
+          propertyId={selectedPropertyId}
+          propertyName={propertiesById[selectedPropertyId]?.name}
+          year={yearFilter}
+          comments={store.comments}
+          onSave={store.saveComment}
+        />
 
         <div className="mb-6 overflow-hidden rounded-2xl border border-[#33311E] bg-[#242316] shadow-sm">
           <div className="overflow-x-auto">
