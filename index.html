@@ -158,10 +158,12 @@ const ChevronDown = (p) => <IconBase {...p}><path d="m6 9 6 6 6-6"/></IconBase>;
 const REGIMES = {
   LMNP: { id: "LMNP", label: "LMNP réel" },
   FONCIER: { id: "FONCIER", label: "Revenus fonciers" },
+  ACTIVITE: { id: "ACTIVITE", label: "Activité (édition de logiciel)" },
 };
 const REGIME_ACCENT = {
   LMNP: { text: "text-[#E0A164]", bg: "bg-[#9A5B34]/20" },
   FONCIER: { text: "text-[#8FB4D6]", bg: "bg-[#3D5A73]/25" },
+  ACTIVITE: { text: "text-[#B9A2E8]", bg: "bg-[#5B4A8A]/25" },
 };
 const CAT = {
   LOYER_HC: "Loyer Hors Charges",
@@ -178,7 +180,27 @@ const CAT = {
   HONORAIRES: "Honoraires d'agence",
   REGUL_CHARGES: "Régularisation de charges (avec locataire)",
   AUTRE: "Autre charge déductible",
+  // --- Activité (édition de logiciel) ---
+  ACT_VENTES: "Ventes de licences / abonnements",
+  ACT_PRESTATIONS: "Prestations de services / développement",
+  ACT_AUTRE_RECETTE: "Autre recette d'activité",
+  ACT_HEBERGEMENT: "Hébergement, serveurs & outils SaaS",
+  ACT_MATERIEL: "Matériel & équipement informatique",
+  ACT_SOUS_TRAITANCE: "Sous-traitance / freelances",
+  ACT_PUBLICITE: "Publicité & marketing",
+  ACT_FRAIS_BANCAIRES: "Frais bancaires & de paiement (Stripe, PayPal…)",
+  ACT_COMPTA_JURIDIQUE: "Comptable, juridique & assurances",
+  ACT_COTISATIONS: "Cotisations sociales (URSSAF)",
+  ACT_DEPLACEMENTS: "Déplacements, repas & réceptions",
+  ACT_FORMATION: "Formation & documentation",
+  ACT_AUTRE: "Autre charge d'activité",
 };
+const ACTIVITE_RECETTE_CATEGORIES = [CAT.ACT_VENTES, CAT.ACT_PRESTATIONS, CAT.ACT_AUTRE_RECETTE];
+const ACTIVITE_CHARGE_CATEGORIES = [
+  CAT.ACT_HEBERGEMENT, CAT.ACT_MATERIEL, CAT.ACT_SOUS_TRAITANCE, CAT.ACT_PUBLICITE, CAT.ACT_FRAIS_BANCAIRES,
+  CAT.ACT_COMPTA_JURIDIQUE, CAT.ACT_COTISATIONS, CAT.ACT_DEPLACEMENTS, CAT.ACT_FORMATION, CAT.ACT_AUTRE,
+];
+const ACTIVITE_CATS = new Set([...ACTIVITE_RECETTE_CATEGORIES, ...ACTIVITE_CHARGE_CATEGORIES]);
 // TEOM n'est pas sélectionnable directement : elle est créée automatiquement en même temps
 // que la taxe foncière (voir OperationFormModal), donc absente de cette liste de choix.
 const CHARGE_CATEGORIES = [CAT.CHARGES_COPRO, CAT.ASSURANCE_PNO, CAT.TAXE_FONCIERE, CAT.TRAVAUX, CAT.FRAIS_GESTION, CAT.HONORAIRES, CAT.REGUL_CHARGES, CAT.AUTRE];
@@ -204,18 +226,39 @@ const TAX_BOX_HINTS = {
   [CAT.HONORAIRES]: { FONCIER: "Case 221 (honoraires)", LMNP: "Charges externes — cpte 622" },
   [CAT.REGUL_CHARGES]: { FONCIER: "Complément perçu → case 211 ; remboursement → case 225/226", LMNP: "Complément perçu → cpte 706 ; remboursement → cpte 613/622" },
   [CAT.AUTRE]: { FONCIER: "Case 229 (autres charges)", LMNP: "Selon nature — à valider avec ton comptable" },
+  // Activité : repères de comptes du plan comptable, à adapter à ton statut (micro-entreprise, EI au réel, société…).
+  [CAT.ACT_VENTES]: { ACTIVITE: "Chiffre d'affaires — cpte 706/707" },
+  [CAT.ACT_PRESTATIONS]: { ACTIVITE: "Chiffre d'affaires — cpte 706" },
+  [CAT.ACT_AUTRE_RECETTE]: { ACTIVITE: "Autres produits — cpte 708/75" },
+  [CAT.ACT_HEBERGEMENT]: { ACTIVITE: "Charges externes — cpte 613 / 651" },
+  [CAT.ACT_MATERIEL]: { ACTIVITE: "Immobilisation (cpte 2183) si > 500 € HT, sinon charge — cpte 606" },
+  [CAT.ACT_SOUS_TRAITANCE]: { ACTIVITE: "Sous-traitance — cpte 611" },
+  [CAT.ACT_PUBLICITE]: { ACTIVITE: "Publicité — cpte 623" },
+  [CAT.ACT_FRAIS_BANCAIRES]: { ACTIVITE: "Services bancaires — cpte 627" },
+  [CAT.ACT_COMPTA_JURIDIQUE]: { ACTIVITE: "Honoraires & assurances — cpte 622 / 616" },
+  [CAT.ACT_COTISATIONS]: { ACTIVITE: "Cotisations sociales — cpte 645 (exploitant : 646)" },
+  [CAT.ACT_DEPLACEMENTS]: { ACTIVITE: "Déplacements & réceptions — cpte 625" },
+  [CAT.ACT_FORMATION]: { ACTIVITE: "Divers — cpte 618" },
+  [CAT.ACT_AUTRE]: { ACTIVITE: "Selon nature — à valider avec ton comptable" },
 };
 function taxBoxLabel(categorie, regime) {
   const hint = TAX_BOX_HINTS[categorie];
   if (!hint) return "—";
-  if (regime === "MIXTE") return `Foncier : ${hint.FONCIER} · LMNP : ${hint.LMNP}`;
-  return hint[regime] || "—";
+  if (regime === "MIXTE") {
+    const parts = [];
+    if (hint.FONCIER) parts.push(`Foncier : ${hint.FONCIER}`);
+    if (hint.LMNP) parts.push(`LMNP : ${hint.LMNP}`);
+    if (hint.ACTIVITE) parts.push(hint.ACTIVITE);
+    return parts.join(" · ") || "—";
+  }
+  return hint[regime] || (hint.ACTIVITE && regime !== "FONCIER" && regime !== "LMNP" ? hint.ACTIVITE : "—");
 }
 
 const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 function monthLabel(iso) { return MONTHS_FR[parseInt(iso.slice(5, 7), 10) - 1]; }
 function detectGroupTab(rows) {
   const cats = new Set(rows.map((r) => r.categorie));
+  if (rows.some((r) => ACTIVITE_RECETTE_CATEGORIES.includes(r.categorie))) return "RECETTE_ACTIVITE";
   if (cats.has(CAT.LOYER_HC) || cats.has(CAT.PROVISIONS)) return "LOYER";
   if (cats.has(CAT.INTERETS) || cats.has(CAT.ASSURANCE_EMPRUNT) || cats.has(CAT.CAPITAL)) return "EMPRUNT";
   return "CHARGE";
@@ -1907,7 +1950,10 @@ const OPERATION_TABS = [
   { id: "LOYER", label: "Loyer reçu", icon: Home },
   { id: "EMPRUNT", label: "Mensualité d'emprunt", icon: Landmark },
   { id: "CHARGE", label: "Charge / Dépense", icon: Receipt },
+  { id: "RECETTE_ACTIVITE", label: "Recette", icon: Download },
 ];
+const TABS_IMMO = ["LOYER", "EMPRUNT", "CHARGE"];
+const TABS_ACTIVITE = ["RECETTE_ACTIVITE", "CHARGE"];
 function today() { return new Date().toISOString().slice(0, 10); }
 function currentYearStr() { return String(new Date().getFullYear()); }
 
@@ -1935,8 +1981,19 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
   const [chargeLibelle, setChargeLibelle] = useState("");
   const [isMultiple, setIsMultiple] = useState(false);
   const [multiEndDate, setMultiEndDate] = useState("");
+  const [recetteCategorie, setRecetteCategorie] = useState(ACTIVITE_RECETTE_CATEGORIES[0]);
+  const [tvaMontant, setTvaMontant] = useState("");
 
   const tenantsForProperty = useMemo(() => tenants.filter((t) => t.propertyId === propertyId), [tenants, propertyId]);
+
+  // Un bien « Activité » n'a ni loyer ni emprunt : onglets et catégories propres à l'activité.
+  const isActivity = properties.find((p) => p.id === propertyId)?.regime === "ACTIVITE";
+  const allowedTabs = isActivity ? TABS_ACTIVITE : TABS_IMMO;
+  const chargeOptions = isActivity ? ACTIVITE_CHARGE_CATEGORIES : CHARGE_CATEGORIES;
+  useEffect(() => {
+    if (!allowedTabs.includes(tab)) setTab(allowedTabs[0]);
+    if (!chargeOptions.includes(chargeCategorie)) setChargeCategorie(chargeOptions[0]);
+  }, [open, tab, chargeCategorie, isActivity]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!open) return;
@@ -1960,6 +2017,8 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
       setRegulComplement(editingGroup.regulComplement ?? "");
       setRegulRemboursement(editingGroup.regulRemboursement ?? "");
       setChargeLibelle(editingGroup.chargeLibelle ?? "");
+      setRecetteCategorie(editingGroup.recetteCategorie ?? ACTIVITE_RECETTE_CATEGORIES[0]);
+      setTvaMontant(editingGroup.tva ?? "");
       setIsMultiple(false);
       setMultiEndDate("");
     } else {
@@ -2008,11 +2067,12 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
   const loyerTotal = num(loyerHC) + num(provisions);
   const mensualiteTotal = num(capital) + num(interets) + num(assurance);
 
-  function resetAll() { setLoyerHC(""); setProvisions(""); setCapital(""); setInterets(""); setAssurance(""); setChargeMontant(""); setChargeMontantAppart(""); setChargeMontantParking(""); setTaxeFonciereTotal(""); setTaxeFonciereTeom(""); setRegulComplement(""); setRegulRemboursement(""); setChargeLibelle(""); }
+  function resetAll() { setLoyerHC(""); setProvisions(""); setCapital(""); setInterets(""); setAssurance(""); setChargeMontant(""); setChargeMontantAppart(""); setChargeMontantParking(""); setTaxeFonciereTotal(""); setTaxeFonciereTeom(""); setRegulComplement(""); setRegulRemboursement(""); setChargeLibelle(""); setTvaMontant(""); }
 
   // Construit les lignes d'une opération pour UNE date donnée (même logique quel que soit l'onglet).
   function buildRowsForBase(base) {
     const property = properties.find((p) => p.id === propertyId);
+    const tvaField = isActivity && num(tvaMontant) > 0 ? { tva: num(tvaMontant) } : {};
     let rows = [];
     if (tab === "LOYER") {
       if (num(loyerHC) > 0) rows.push({ ...base, categorie: CAT.LOYER_HC, libelle: `Loyer ${property?.name || ""}`.trim(), montant: num(loyerHC), typeOperation: "Recette", tenantId: tenantId || null });
@@ -2022,6 +2082,9 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
       if (num(interets) > 0) rows.push({ ...base, categorie: CAT.INTERETS, libelle: `Intérêts emprunt ${property?.name || ""}`.trim(), montant: num(interets), typeOperation: "Depense" });
       if (num(assurance) > 0) rows.push({ ...base, categorie: CAT.ASSURANCE_EMPRUNT, libelle: `Assurance emprunteur ${property?.name || ""}`.trim(), montant: num(assurance), typeOperation: "Depense" });
       if (num(capital) > 0) rows.push({ ...base, categorie: CAT.CAPITAL, libelle: `Capital amorti ${property?.name || ""}`.trim(), montant: num(capital), typeOperation: "Depense" });
+    }
+    if (tab === "RECETTE_ACTIVITE") {
+      if (num(chargeMontant) > 0) rows.push({ ...base, categorie: recetteCategorie, libelle: chargeLibelle.trim(), montant: num(chargeMontant), typeOperation: "Recette", ...tvaField });
     }
     if (tab === "CHARGE") {
       if (chargeCategorie === CAT.CHARGES_COPRO) {
@@ -2040,7 +2103,7 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
         if (num(regulComplement) > 0) rows.push({ ...base, categorie: CAT.REGUL_CHARGES, libelle: chargeLibelle.trim() || "Complément régularisation charges", montant: num(regulComplement), typeOperation: "Recette" });
         if (num(regulRemboursement) > 0) rows.push({ ...base, categorie: CAT.REGUL_CHARGES, libelle: chargeLibelle.trim() || "Remboursement régularisation charges", montant: num(regulRemboursement), typeOperation: "Depense" });
       } else if (num(chargeMontant) > 0) {
-        rows.push({ ...base, categorie: chargeCategorie, libelle: chargeLibelle.trim(), montant: num(chargeMontant), typeOperation: "Depense" });
+        rows.push({ ...base, categorie: chargeCategorie, libelle: chargeLibelle.trim(), montant: num(chargeMontant), typeOperation: "Depense", ...tvaField });
       }
     }
     return rows;
@@ -2065,7 +2128,7 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
   return (
     <Modal open={open} onClose={onClose} title={isEditing ? "Modifier l'opération" : isDuplicating ? "Dupliquer l'opération" : "Nouvelle opération"} wide>
       <div className="mb-5 flex gap-2 rounded-lg bg-[#17160F] p-1">
-        {OPERATION_TABS.map((t) => {
+        {OPERATION_TABS.filter((t) => allowedTabs.includes(t.id)).map((t) => {
           const Icon = t.icon; const active = tab === t.id;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
@@ -2077,7 +2140,7 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
       </div>
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <Field label={tab === "LOYER" ? "Date du virement" : tab === "EMPRUNT" ? "Date du prélèvement" : "Date"}>
+          <Field label={tab === "LOYER" ? "Date du virement" : tab === "EMPRUNT" ? "Date du prélèvement" : tab === "RECETTE_ACTIVITE" ? "Date d'encaissement" : "Date"}>
             <input type="date" className={inputClasses} value={date} onChange={(e) => setDate(e.target.value)} required />
           </Field>
           <Field label="Propriété concernée">
@@ -2105,6 +2168,22 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
               </div>
             )}
           </div>
+        )}
+
+        {tab === "RECETTE_ACTIVITE" && (
+          <>
+            <Field label="Type de recette">
+              <select className={inputClasses} value={recetteCategorie} onChange={(e) => setRecetteCategorie(e.target.value)}>
+                {ACTIVITE_RECETTE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Montant encaissé (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargeMontant} onChange={(e) => setChargeMontant(e.target.value)} placeholder="49" /></Field>
+              <Field label="Client / produit (optionnel)"><input className={inputClasses} value={chargeLibelle} onChange={(e) => setChargeLibelle(e.target.value)} placeholder="Ex. Abonnement Pro — mars (Stripe)" /></Field>
+            </div>
+            <Field label="dont TVA (€, optionnel)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={tvaMontant} onChange={(e) => setTvaMontant(e.target.value)} placeholder="0" /></Field>
+            <p className="text-xs text-[#837D62]">Saisis le montant HT et la TVA à part : la TVA collectée est suivie sous le tableau récapitulatif. Sans TVA (franchise en base), laisse vide.</p>
+          </>
         )}
 
         {tab === "LOYER" && (
@@ -2145,7 +2224,7 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
           <>
             <Field label="Catégorie fiscale">
               <select className={inputClasses} value={chargeCategorie} onChange={(e) => setChargeCategorie(e.target.value)}>
-                {CHARGE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                {chargeOptions.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
             {chargeCategorie === CAT.CHARGES_COPRO ? (
@@ -2181,8 +2260,9 @@ function OperationFormModal({ open, onClose, properties, tenants, onSubmitGroup,
               </>
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Montant (€)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargeMontant} onChange={(e) => setChargeMontant(e.target.value)} placeholder="120" /></Field>
-                <Field label="Libellé (optionnel)"><input className={inputClasses} value={chargeLibelle} onChange={(e) => setChargeLibelle(e.target.value)} placeholder="Ex. Ravalement façade" /></Field>
+                <Field label={isActivity ? "Montant HT (€)" : "Montant (€)"}><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={chargeMontant} onChange={(e) => setChargeMontant(e.target.value)} placeholder="120" /></Field>
+                <Field label="Libellé (optionnel)"><input className={inputClasses} value={chargeLibelle} onChange={(e) => setChargeLibelle(e.target.value)} placeholder={isActivity ? "Ex. Serveur OVH — octobre" : "Ex. Ravalement façade"} /></Field>
+                {isActivity && <Field label="dont TVA déductible (€, optionnel)"><input type="number" step="0.01" inputMode="decimal" className={inputClasses} value={tvaMontant} onChange={(e) => setTvaMontant(e.target.value)} placeholder="0" /></Field>}
               </div>
             )}
           </>
@@ -2278,7 +2358,14 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
     set.add(currentYearStr());
     return Array.from(set).sort().reverse();
   }, [transactions]);
-  const allCategories = useMemo(() => Object.values(CAT), []);
+  // Catégories pertinentes selon les biens dans le périmètre (immobilier et/ou activité).
+  const scopeProperties = selectedPropertyId === "ALL" ? properties : properties.filter((p) => p.id === selectedPropertyId);
+  const hasActivity = scopeProperties.some((p) => p.regime === "ACTIVITE");
+  const hasImmo = scopeProperties.some((p) => p.regime !== "ACTIVITE");
+  const allCategories = useMemo(
+    () => Object.values(CAT).filter((c) => (ACTIVITE_CATS.has(c) ? hasActivity : hasImmo)),
+    [hasActivity, hasImmo]
+  );
 
   const filtered = useMemo(() => transactions
     .filter((t) => selectedPropertyId === "ALL" || t.propertyId === selectedPropertyId)
@@ -2329,7 +2416,13 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
     return regimes.size === 1 ? Array.from(regimes)[0] : "MIXTE";
   }, [selectedPropertyId, propertiesById, properties]);
 
-  const categoryBreakdown = useMemo(() => allCategories.map((cat) => {
+  // On affiche aussi une catégorie hors périmètre dès qu'elle a des saisies (ex. bien supprimé).
+  const breakdownCategories = useMemo(() => {
+    const used = new Set(yearPropertyFiltered.map((t) => t.categorie));
+    return Object.values(CAT).filter((c) => allCategories.includes(c) || used.has(c));
+  }, [allCategories, yearPropertyFiltered]);
+
+  const categoryBreakdown = useMemo(() => breakdownCategories.map((cat) => {
     const rows = yearPropertyFiltered.filter((t) => t.categorie === cat);
     // Solde signé (Recette positive, Dépense négative) : pour la quasi-totalité des catégories,
     // toutes les lignes ont le même sens et ce solde vaut la simple somme des montants comme avant.
@@ -2337,12 +2430,21 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
     // au locataire (Dépense) dans une même catégorie : le solde signé reflète alors le net.
     const net = rows.reduce((s, t) => s + (t.typeOperation === "Recette" ? t.montant : -t.montant), 0);
     return { categorie: cat, count: rows.length, total: Math.abs(net), isRecette: net >= 0, taxBox: taxBoxLabel(cat, breakdownRegime) };
-  }), [yearPropertyFiltered, allCategories, breakdownRegime]);
+  }), [yearPropertyFiltered, breakdownCategories, breakdownRegime]);
 
   const breakdownNet = useMemo(() => {
     let net = 0;
     for (const t of yearPropertyFiltered) net += t.typeOperation === "Recette" ? t.montant : -t.montant;
     return net;
+  }, [yearPropertyFiltered]);
+
+  const tvaSummary = useMemo(() => {
+    let collectee = 0, deductible = 0;
+    for (const t of yearPropertyFiltered) {
+      if (!ACTIVITE_CATS.has(t.categorie) || !t.tva) continue;
+      if (t.typeOperation === "Recette") collectee += t.tva; else deductible += t.tva;
+    }
+    return { collectee, deductible, solde: collectee - deductible };
   }, [yearPropertyFiltered]);
 
   async function handleSubmitGroup(rows, oldGroupId) {
@@ -2357,6 +2459,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
     const tab = detectGroupTab(group);
     if (tab === "LOYER") return { tab, loyerHC: amountFor(CAT.LOYER_HC), provisions: amountFor(CAT.PROVISIONS), tenantId: group[0]?.tenantId || "" };
     if (tab === "EMPRUNT") return { tab, capital: amountFor(CAT.CAPITAL), interets: amountFor(CAT.INTERETS), assurance: amountFor(CAT.ASSURANCE_EMPRUNT) };
+    if (tab === "RECETTE_ACTIVITE") return { tab, recetteCategorie: t.categorie, chargeMontant: t.montant, chargeLibelle: t.libelle || "", tva: t.tva ?? "" };
     if (t.categorie === CAT.CHARGES_COPRO) {
       const coproRows = group.filter((x) => x.categorie === CAT.CHARGES_COPRO);
       const isSplit = coproRows.length > 1 || coproRows.some((x) => x.libelle === "Appartement" || x.libelle === "Parking");
@@ -2377,7 +2480,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
       const remboursement = regulRows.find((x) => x.typeOperation === "Depense")?.montant ?? "";
       return { tab, chargeCategorie: CAT.REGUL_CHARGES, regulComplement: complement, regulRemboursement: remboursement, chargeLibelle: t.libelle || "" };
     }
-    return { tab, chargeCategorie: t.categorie, chargeMontant: t.montant, chargeLibelle: t.libelle || "" };
+    return { tab, chargeCategorie: t.categorie, chargeMontant: t.montant, chargeLibelle: t.libelle || "", tva: t.tva ?? "" };
   }
   function handleEditRow(t) {
     setEditingGroup({ mode: "edit", groupId: t.groupId || t.id, date: t.date, propertyId: t.propertyId, ...buildGroupValues(t) });
@@ -2412,7 +2515,7 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
               <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-white/15"><Landmark size={22} /></span>
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight">Bailly</h1>
-                <p className="text-sm text-[#F1EEE2]/70">Registre locatif — LMNP réel &amp; revenus fonciers, export prêt pour Qlower</p>
+                <p className="text-sm text-[#F1EEE2]/70">Registre locatif &amp; activité — LMNP réel, revenus fonciers, édition de logiciel, export prêt pour Qlower</p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -2508,7 +2611,15 @@ function RealEstateLedger({ onSignOut, showSignOut }) {
           </div>
           <p className="border-t border-[#2A2818] px-4 py-2.5 text-xs text-[#837D62]">
             Correspondances indicatives pour le régime réel (déclaration 2044) — à vérifier chaque année, les numéros de case pouvant légèrement changer. En LMNP réel, pas de case 2042 dédiée : les montants sont repris dans la liasse fiscale (formulaires 2031-2033), d'où le renvoi au poste comptable.
+            {hasActivity && " Activité : au régime réel, les frais sont déductibles du résultat de l'activité ; les comptes indiqués sont des repères. Même SIREN que le LMNP ne veut pas dire résultat commun : le déficit éventuel d'un LMNP non professionnel ne s'impute pas sur les bénéfices de l'activité (à confirmer avec ton comptable, notamment BIC ou BNC pour l'édition de logiciel)."}
           </p>
+          {hasActivity && (
+            <div className="grid grid-cols-3 gap-2 border-t border-[#2A2818] px-4 py-3 text-xs">
+              <div><div className="text-[#837D62]">TVA collectée</div><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(tvaSummary.collectee)}</div></div>
+              <div><div className="text-[#837D62]">TVA déductible</div><div className="font-mono tabular-nums text-[#F1EEE2]">{formatCurrency(tvaSummary.deductible)}</div></div>
+              <div><div className="text-[#837D62]">{tvaSummary.solde >= 0 ? "TVA à reverser" : "Crédit de TVA"}</div><div className="font-mono tabular-nums text-[#E0A164]">{formatCurrency(Math.abs(tvaSummary.solde))}</div></div>
+            </div>
+          )}
         </div>
 
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
